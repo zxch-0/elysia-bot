@@ -72,13 +72,14 @@ export async function logMessageEvent(params: {
   guild: Guild;
   type: 'delete' | 'update';
   channelId: string;
-  author: User;
+  author?: User | null;
   content: string;
   before?: string;
 }): Promise<void> {
   const settings = guildService.get(params.guild.id);
   if (!settings.modules.logs || !settings.channels.messageLog) return;
-  if (params.author?.bot) return;
+  if (!params.author) return; // message partial sans auteur résolu : impossible à journaliser
+  if (params.author.bot) return;
 
   const embed = baseEmbed({
     title: params.type === 'delete' ? '🗑️ Message supprimé' : '✏️ Message modifié',

@@ -130,7 +130,7 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
         guild: after.guild,
         type: 'update',
         channelId: after.channelId,
-        author: after.author ?? before.author!,
+        author: after.author ?? before.author,
         content: after.content ?? '',
         before: before.content ?? '',
       });

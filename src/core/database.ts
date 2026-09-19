@@ -20,6 +20,7 @@ export class Collection<T extends Document> {
   private cache = new Map<string, T>();
   private dirty = false;
   private flushTimer: NodeJS.Timeout | undefined;
+  private flushChain: Promise<void> = Promise.resolve();
   private ready = false;
 
   constructor(
@@ -87,8 +88,12 @@ export class Collection<T extends Document> {
   /** Met à jour un document (patch partiel ou fonction). */
   update(id: string, patch: Partial<T> | ((doc: T) => T)): T | undefined {
     const current = this.cache.get(id);
-    const next = typeof patch === 'function' ? patch(current as T) : { ...(current as T), ...patch };
-    if (!next) return undefined;
+    if (!current) {
+      // Patch fonctionnel sur un document absent : rien à mettre à jour.
+      if (typeof patch === 'function') return undefined;
+      return undefined;
+    }
+    const next = typeof patch === 'function' ? patch(current) : { ...current, ...patch };
     this.cache.set(id, next as T);
     this.markDirty();
     return next as T;
@@ -116,8 +121,18 @@ export class Collection<T extends Document> {
     this.flushTimer.unref?.();
   }
 
-  /** Écrit la collection sur le disque de manière atomique. */
-  async flush(): Promise<void> {
+  /**
+   * Écrit la collection sur le disque de manière atomique.
+   * Les écritures sont sérialisées : deux `flush()` concurrents (debounce +
+   * arrêt du processus) écriraient sinon le même fichier temporaire en même
+   * temps, avec un risque de corruption.
+   */
+  flush(): Promise<void> {
+    this.flushChain = this.flushChain.then(() => this.doFlush());
+    return this.flushChain;
+  }
+
+  private async doFlush(): Promise<void> {
     if (!this.dirty) return;
     this.dirty = false;
     const payload = Object.fromEntries(this.cache) as Record<string, T>;
@@ -129,6 +144,14 @@ export class Collection<T extends Document> {
     } catch (error) {
       this.dirty = true;
       log.error(`Échec d'écriture de la collection « ${this.name} »`, error);
+      // Nouvelle tentative dans 5 s (disque plein, verrou temporaire…).
+      if (!this.flushTimer) {
+        this.flushTimer = setTimeout(() => {
+          this.flushTimer = undefined;
+          void this.flush();
+        }, 5_000);
+        this.flushTimer.unref?.();
+      }
     }
   }
 }

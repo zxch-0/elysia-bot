@@ -20,23 +20,14 @@ import { errorEmbed, infoEmbed, successEmbed, warningEmbed } from '../../ui/embe
 
 const log = createLogger('interactions');
 
-/** Récupère un argument de commande de façon sûre. */
-function splitPath(path?: string): string[] {
-  if (!path) return [];
-  return path.split('.').filter(Boolean);
-}
-
-function getOption(interaction: any, key: string, path?: string): any {
-  const parts = splitPath(path);
-  if (parts.length === 0) {
-    return (
-      interaction.options.get(key) ??
-      interaction.options.getSubcommand(false) ??
-      interaction.options.getSubcommandGroup(false) ??
-      null
-    );
-  }
-  return interaction.options.get(key, ...parts);
+/**
+ * Récupère un argument de commande de façon sûre.
+ * Note : `interaction.options.get(key)` cherche déjà dans les options des
+ * sous-commandes ; tout autre repli (nom de sous-commande, etc.) renverrait
+ * une valeur incohérente (ex. `/purge` sans `salon` → « Salon introuvable »).
+ */
+function getOption(interaction: any, key: string, _path?: string): any {
+  return interaction.options.get(key) ?? null;
 }
 
 /**
@@ -99,8 +90,9 @@ export function buildContext(
       return Boolean(flag);
     },
     channel(key: string, path?: string, types?: ChannelType[]): any {
-      const value = getOption(interaction, key, path);
-      const channel = value?.channel ?? value;
+      const option = getOption(interaction, key, path);
+      // Option absente → salon courant (comportement « par défaut : salon courant »).
+      const channel = option?.channel ?? option ?? interaction.channel;
       if (!channel) throw new UsageError(`Salon introuvable (\`${key}\`).`);
       if (types && types.length > 0 && !types.includes(channel.type)) {
         throw new UsageError('Ce type de salon n’est pas accepté ici.');

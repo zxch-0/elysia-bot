@@ -26,6 +26,11 @@ export interface WeightedCandidate {
   weight: number;
 }
 
+/** Nombre aléatoire uniforme cryptographiquement sûr dans [0, 1). */
+function secureRandom(): number {
+  return randomInt(0, 1_000_000_000) / 1_000_000_000;
+}
+
 /**
  * Tirage pondéré sans remise — utilisé par les giveaways
  * (les rôles bonus augmentent le poids d'un participant).
@@ -37,7 +42,7 @@ export function pickWeightedWinners(candidates: WeightedCandidate[], count: numb
 
   while (winners.length < wanted && pool.length > 0) {
     const totalWeight = pool.reduce((sum, candidate) => sum + candidate.weight, 0);
-    let ticket = Math.random() * totalWeight;
+    let ticket = secureRandom() * totalWeight;
     let index = pool.length - 1;
     for (let cursor = 0; cursor < pool.length; cursor += 1) {
       ticket -= pool[cursor].weight;

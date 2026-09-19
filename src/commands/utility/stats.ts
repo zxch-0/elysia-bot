@@ -11,7 +11,8 @@ import { panelService } from '../../services/panelService';
 const statsCommand: Command = {
   data: new SlashCommandBuilder()
     .setName('bot-stats')
-    .setDescription('Statistiques techniques du bot (latence, mémoire, serveurs, données)'),
+    .setDescription('Statistiques techniques du bot (latence, mémoire, serveurs, données)')
+    .setDMPermission(false),
   category: 'utility',
   summary: 'État de santé du bot',
   cooldown: 5,

@@ -45,6 +45,9 @@ function collectStats(refs: WebServerRefs) {
   const snapshot = refs.client.snapshot();
   const memory = process.memoryUsage();
   const interval = Number(process.env.SELF_PING_INTERVAL ?? 14);
+  // Le planificateur démarre après « ready » : il est exposé sur le client
+  // (voir index.ts), la référence initiale reste donc undefined.
+  const scheduler = (refs.client as unknown as { scheduler?: SchedulerService }).scheduler ?? refs.scheduler;
   return {
     ...snapshot,
     service: 'elysia-bot',
@@ -65,7 +68,7 @@ function collectStats(refs: WebServerRefs) {
       recommendedIntervalMinutes: interval > 0 ? interval : 14,
       note: 'Ajoutez https://VOTRE-SERVICE.onrender.com/health dans UptimeRobot (monitor HTTP, toutes les 5 min).',
     },
-    scheduler: refs.scheduler?.status() ?? [],
+    scheduler: scheduler?.status() ?? [],
   };
 }
 
@@ -169,7 +172,13 @@ export function createWebServer(refs: WebServerRefs): http.Server {
         // Fichiers statiques optionnels (assets/images) — utile pour les bannières.
         if (route.startsWith('/assets/')) {
           const config = loadConfig();
-          const target = path.join(process.cwd(), config.assetsDir, route.replace('/assets/', ''));
+          const assetsRoot = path.resolve(process.cwd(), config.assetsDir);
+          const target = path.resolve(assetsRoot, route.replace('/assets/', ''));
+          // Anti path-traversal : on ne sert que ce qui est dans assets/.
+          if (!target.startsWith(assetsRoot + path.sep)) {
+            json(response, 403, { error: 'Accès refusé' });
+            return;
+          }
           try {
             const content = await readFile(target);
             const extension = path.extname(target).toLowerCase();

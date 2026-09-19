@@ -116,8 +116,9 @@ export const panelRoleModule: InteractionModule = {
       const member: GuildMember = await guild.members.fetch(interaction.user.id);
       const result = await panelService.toggleRole({ guild, member, panel, roleId: roleId ?? '' });
 
+      const roleLabel = guild.roles.cache.get(roleId ?? '')?.toString() ?? `**${result.roleName}**`;
       const description = result.added
-        ? [`Vous avez maintenant le rôle ${interaction.guild!.roles.cache.get(roleId ?? '') ?? `**${result.roleName}**`}.`]
+        ? [`Vous avez maintenant le rôle ${roleLabel}.`]
         : [`Le rôle **${result.roleName}** vous a été retiré.`];
 
       if (result.replaced && result.replaced.length > 0) {

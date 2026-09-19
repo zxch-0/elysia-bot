@@ -302,7 +302,6 @@ const configCommand: Command = {
 
     // ── Configuration guidée ───────────────────────────────────────────────
     if (sub === 'convivialite') {
-      const patch: Record<string, unknown> = {};
       const channels: Record<string, string | null> = {};
       const roles: Record<string, string | string[] | null> = {};
 
@@ -331,16 +330,18 @@ const configCommand: Command = {
         throw new UsageError('Renseignez au moins un salon ou un rôle à configurer (ou utilisez `/config voir`).');
       }
 
+      // On n'active que les modules correspondant aux options fournies :
+      // configurer uniquement la bienvenue ne doit pas couper les logs.
+      const modules: Record<string, boolean> = {};
+      if (channels.welcome) modules.welcome = true;
+      if (channels.goodbye) modules.goodbye = true;
+      if (channels.modLog || channels.messageLog || channels.memberLog) modules.logs = true;
+      if (roleAuto) modules.autoRole = true;
+
       const updated = guildService.update(ctx.guild.id, {
         channels,
         roles,
-        modules: {
-          welcome: Boolean(channels.welcome),
-          goodbye: Boolean(channels.goodbye),
-          logs: Boolean(channels.modLog || channels.messageLog || channels.memberLog),
-          autoRole: Boolean(roleAuto),
-        },
-        ...patch,
+        ...(Object.keys(modules).length > 0 ? { modules } : {}),
       } as never);
 
       const embed = successEmbed(
@@ -613,7 +614,15 @@ const configCommand: Command = {
       });
       embed.addFields({
         name: 'Rappel',
-        value: `Le message est envoyé dans ${isWelcome ? `<#${settings.channels.welcome ?? '0'}>` : `<#${settings.channels.goodbye ?? '0'}>`} — configurez-le avec \`/config salon\`.`,
+        value: `Le message est envoyé dans ${
+          isWelcome
+            ? settings.channels.welcome
+              ? `<#${settings.channels.welcome}>`
+              : '**aucun salon configuré**'
+            : settings.channels.goodbye
+              ? `<#${settings.channels.goodbye}>`
+              : '**aucun salon configuré**'
+        } — configurez-le avec \`/config salon\`.`,
       });
       return ctx.send(embed);
     }

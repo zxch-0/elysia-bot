@@ -123,6 +123,11 @@ export function renderDashboard(): string {
     if (m > 0) return m + ' min ' + sec + ' s';
     return sec + ' s';
   };
+  // Les noms de serveurs sont choisis par leurs propriétaires : sans
+  // échappement, un nom malveillant pourrait injecter du HTML (XSS).
+  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
   const setText = (id, value) => { const el = document.getElementById(id); if (el) el.innerHTML = value; };
 
   async function refresh() {
@@ -132,7 +137,7 @@ export function renderDashboard(): string {
       const pill = document.getElementById('status');
       const offline = !data.ready;
       pill.className = 'status-pill' + (offline ? ' off' : '');
-      pill.innerHTML = '<span class="dot"></span><span>' + (offline ? 'Hors ligne (mode maintenance)' : 'En ligne • ' + (data.user ? data.user.tag : 'Elysia')) + '</span>';
+      pill.innerHTML = '<span class="dot"></span><span>' + (offline ? 'Hors ligne (mode maintenance)' : 'En ligne • ' + esc(data.user ? data.user.tag : 'Elysia')) + '</span>';
 
       setText('latency', (data.latencyMs ?? 0) + '<small> ms</small>');
       setText('uptime', fmt(data.uptimeMs || 0));
@@ -149,10 +154,10 @@ export function renderDashboard(): string {
       } else {
         list.innerHTML = data.guilds.map((g) => {
           const initial = (g.name || '?').charAt(0).toUpperCase();
-          const icon = g.icon ? '<img src="' + g.icon + '" alt="" />' : '<div class="avatar-fallback">' + initial + '</div>';
+          const icon = g.icon ? '<img src="' + esc(g.icon) + '" alt="" />' : '<div class="avatar-fallback">' + esc(initial) + '</div>';
           return '<div class="row">' + icon +
-            '<div class="grow"><div class="name">' + g.name + '</div>' +
-            '<div class="meta">' + new Intl.NumberFormat('fr-FR').format(g.members) + ' membres • <code>' + g.id + '</code></div></div>' +
+            '<div class="grow"><div class="name">' + esc(g.name) + '</div>' +
+            '<div class="meta">' + new Intl.NumberFormat('fr-FR').format(g.members) + ' membres • <code>' + esc(g.id) + '</code></div></div>' +
             '<span class="tag">Serveur</span></div>';
         }).join('');
       }

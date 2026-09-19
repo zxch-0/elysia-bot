@@ -125,6 +125,22 @@ export function computeTickets(giveaway: Giveaway, member: GuildMember): number 
   return 1 + bonus;
 }
 
+/**
+ * Résout un membre depuis le cache puis, à défaut, via l'API.
+ * Le cache des membres est volontairement limité (~400, voir `client.ts`) :
+ * sans ce repli, les tickets bonus seraient ignorés sur les gros serveurs.
+ */
+async function resolveMember(guild: Guild, userId: string): Promise<GuildMember | null> {
+  const cached = guild.members.cache.get(userId);
+  if (cached) return cached;
+  try {
+    return await guild.members.fetch(userId);
+  } catch {
+    // Membre parti du serveur ou fetch indisponible.
+    return null;
+  }
+}
+
 export class GiveawayService {
   private collection: Collection<Giveaway> = db.collection<Giveaway>('giveaways');
 
@@ -224,13 +240,15 @@ export class GiveawayService {
     const fresh = this.get(giveaway.id) ?? giveaway;
     if (fresh.ended) throw new BotError('Ce giveaway est déjà terminé.');
 
-    const candidates = fresh.entries
-      .map((userId) => {
-        const member = guild.members.cache.get(userId);
-        const weight = member ? computeTickets(fresh, member) : 1;
-        return { id: userId, weight };
-      })
-      .filter((candidate) => candidate.weight > 0);
+    const candidates = (
+      await Promise.all(
+        fresh.entries.map(async (userId) => {
+          const member = await resolveMember(guild, userId);
+          const weight = member ? computeTickets(fresh, member) : 1;
+          return { id: userId, weight };
+        }),
+      )
+    ).filter((candidate) => candidate.weight > 0);
 
     const winners = pickWeightedWinners(candidates, fresh.winnerCount);
 
@@ -258,16 +276,20 @@ export class GiveawayService {
   }
 
   /** Retire un gagnant et en tire un nouveau parmi les perdants. */
-  reroll(giveaway: Giveaway, guild: Guild, count = 1): string[] {
+  async reroll(giveaway: Giveaway, guild: Guild, count = 1): Promise<string[]> {
     const fresh = this.get(giveaway.id) ?? giveaway;
     if (!fresh.ended) throw new BotError('Ce giveaway n’est pas encore terminé.');
     const previousWinners = new Set(fresh.winners);
     const pool = fresh.entries.filter((userId) => !previousWinners.has(userId));
 
-    const candidates = pool.map((userId) => {
-      const member = guild.members.cache.get(userId);
-      return { id: userId, weight: member ? computeTickets(fresh, member) : 1 };
-    });
+    const candidates = (
+      await Promise.all(
+        pool.map(async (userId) => {
+          const member = await resolveMember(guild, userId);
+          return { id: userId, weight: member ? computeTickets(fresh, member) : 1 };
+        }),
+      )
+    ).filter((candidate) => candidate.weight > 0);
 
     const winners = pickWeightedWinners(candidates, count);
     const rerolled = [...fresh.rerolled, winners];

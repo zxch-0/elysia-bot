@@ -101,7 +101,11 @@ export class CaseService {
   /** Désactive les sanctions expirées (appelé par le planificateur). */
   listExpired(now = Date.now()): ModCase[] {
     return this.collection.find(
-      (entry) => entry.active && entry.autoRevertAt !== null && entry.autoRevertAt !== undefined && entry.autoRevertAt <= now,
+      (entry) =>
+        entry.active &&
+        typeof entry.autoRevertAt === 'number' &&
+        entry.autoRevertAt > 0 &&
+        entry.autoRevertAt <= now,
     );
   }
 

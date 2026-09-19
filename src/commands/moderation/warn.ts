@@ -58,6 +58,7 @@ const warnCommand: Command = {
     if (result.triggered) {
       await ctx.interaction.followUp({
         embeds: [warningEmbed('Sanction automatique appliquée', `Le seuil de **${result.totalWarnings} avertissements** a déclenché : **${result.triggered}**.`)],
+        ephemeral: true,
       });
     }
 

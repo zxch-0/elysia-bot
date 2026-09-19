@@ -98,6 +98,10 @@ export const giveawayModule: InteractionModule = {
 
     if (action === 'leave') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (giveaway.ended) {
+        await interaction.editReply({ embeds: [errorEmbed('Ce giveaway est déjà terminé : les participations sont figées.')] });
+        return;
+      }
       const updated = giveawayService.removeEntry(giveaway.id, interaction.user.id);
       await refreshMessage(updated);
       const wasIn = giveaway.entries.includes(interaction.user.id);
@@ -156,7 +160,7 @@ export const giveawayModule: InteractionModule = {
       }
 
       try {
-        const winners = giveawayService.reroll(giveaway, guild, giveaway.winnerCount);
+        const winners = await giveawayService.reroll(giveaway, guild, giveaway.winnerCount);
         const updated = giveawayService.get(giveaway.id)!;
         await refreshMessage(updated);
 

@@ -158,6 +158,9 @@ export class PanelService {
 
   /** Construit les composants (boutons ou menu) du panneau. */
   buildComponents(panel: RolePanel): ActionRowBuilder<any>[] {
+    // Panneau sans rôles : aucun composant (un menu vide serait refusé par Discord).
+    if (panel.roles.length === 0) return [];
+
     if (panel.mode === 'select') {
       const menu = new StringSelectMenuBuilder()
         .setCustomId(`rr:select:${panel.id}`)

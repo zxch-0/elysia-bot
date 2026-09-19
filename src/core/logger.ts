@@ -50,6 +50,22 @@ function serializeError(error: unknown): unknown {
   return error;
 }
 
+/**
+ * Sérialisation compacte d'une erreur passée en métadonnée.
+ * `JSON.stringify(new Error(...))` renvoie `[{}]` (message et stack ne sont pas
+ * énumérables) : on extrait donc explicitement les champs utiles, sans le
+ * `requestBody` volumineux des DiscordAPIError.
+ */
+function compactError(value: unknown): unknown {
+  if (!(value instanceof Error)) return value;
+  const record: Record<string, unknown> = { name: value.name, message: value.message };
+  const extra = value as Error & { code?: unknown; status?: unknown; method?: unknown; url?: unknown };
+  for (const key of ['code', 'status', 'method', 'url'] as const) {
+    if (extra[key] !== undefined) record[key] = extra[key];
+  }
+  return record;
+}
+
 function write(scope: string, level: Level, message: string | Error, meta: unknown[]): void {
   const config = (() => {
     try {
@@ -64,7 +80,9 @@ function write(scope: string, level: Level, message: string | Error, meta: unkno
 
   const isError = message instanceof Error;
   const text = isError ? `${message.message}` : message;
-  const payload = [...meta, ...(isError ? [serializeError(message)] : [])];
+  // Les erreurs en métadonnée sont compactées : sans cela, `JSON.stringify`
+  // produit `[{}]` (Error) ou un dump de plusieurs Ko (DiscordAPIError).
+  const payload = [...meta.map(compactError), ...(isError ? [serializeError(message)] : [])];
 
   if (config?.logFormat === 'json') {
     // eslint-disable-next-line no-console
@@ -74,7 +92,7 @@ function write(scope: string, level: Level, message: string | Error, meta: unkno
         level,
         scope,
         message: text,
-        meta: payload.map((item) => (item instanceof Error ? serializeError(item) : item)),
+        meta: payload,
       }),
     );
     return;

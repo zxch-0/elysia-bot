@@ -69,6 +69,7 @@ const helpCommand: Command = {
   data: new SlashCommandBuilder()
     .setName('help')
     .setDescription('Affiche l’aide complète du bot, catégorie par catégorie')
+    .setDMPermission(false)
     .addStringOption((option) =>
       option
         .setName('categorie')

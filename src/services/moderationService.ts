@@ -74,17 +74,20 @@ export class ModerationService {
     assertModerationHierarchy({ guild, moderator: moderatorMember, target, action: 'ce bannissement' });
 
     const cleanReason = reason?.trim() || 'Aucune raison fournie';
+
+    await guild.members.ban(target.id, {
+      reason: `${moderator.tag} : ${cleanReason}`,
+      deleteMessageSeconds: Math.min(Math.max(deleteMessageSeconds, 0), 7 * 86_400),
+    });
+
+    // MP envoyé APRÈS la sanction : si l'action échoue (permissions…), la
+    // victime n'est pas prévenue à tort.
     const dmSent = options.silent
       ? false
       : await notifyTarget(
           target.user,
           `🔨 Vous avez été **banni** de **${guild.name}**.\n**Raison :** ${cleanReason}\nSi vous pensez qu'il s'agit d'une erreur, contactez l'équipe.`,
         );
-
-    await guild.members.ban(target.id, {
-      reason: `${moderator.tag} : ${cleanReason}`,
-      deleteMessageSeconds: Math.min(Math.max(deleteMessageSeconds, 0), 7 * 86_400),
-    });
 
     const caseNumber = guildService.nextCaseId(guild.id);
     const entry = caseService.create({
@@ -121,11 +124,13 @@ export class ModerationService {
     assertModerationHierarchy({ guild, moderator: moderatorMember, target, action: 'cette expulsion' });
 
     const cleanReason = reason?.trim() || 'Aucune raison fournie';
+
+    await target.kick(`${moderator.tag} : ${cleanReason}`);
+
+    // MP envoyé APRÈS l'expulsion (voir `ban`).
     const dmSent = options.silent
       ? false
       : await notifyTarget(target.user, `👢 Vous avez été **expulsé** de **${guild.name}**.\n**Raison :** ${cleanReason}`);
-
-    await target.kick(`${moderator.tag} : ${cleanReason}`);
 
     const caseNumber = guildService.nextCaseId(guild.id);
     const entry = caseService.create({
@@ -155,14 +160,15 @@ export class ModerationService {
     const ms = clampTimeout(duration);
     const cleanReason = reason?.trim() || 'Aucune raison fournie';
 
+    await target.timeout(ms, `${moderator.tag} : ${cleanReason}`);
+
+    // MP envoyé APRÈS le timeout (voir `ban`).
     const dmSent = options.silent
       ? false
       : await notifyTarget(
           target.user,
           `🔇 Vous avez été **réduit au silence** sur **${guild.name}** pendant **${formatDuration(ms)}**.\n**Raison :** ${cleanReason}`,
         );
-
-    await target.timeout(ms, `${moderator.tag} : ${cleanReason}`);
 
     const caseNumber = guildService.nextCaseId(guild.id);
     const entry = caseService.create({
@@ -195,7 +201,11 @@ export class ModerationService {
     const { guild, target, duration, useRole } = options;
     const settings = guildService.get(guild.id);
     const mode = useRole ? 'role' : settings.mute.mode;
-    const ms = duration && duration > 0 ? duration : settings.mute.defaultDuration;
+    // `duration` peut valoir 0 (« perm ») : seul l'absence de durée retombe
+    // sur la valeur par défaut. 0 = illimité en mode rôle.
+    const requested = duration === null || duration === undefined ? settings.mute.defaultDuration : duration;
+    // Le timeout natif ne connaît pas l'illimité : on retombe sur la durée par défaut.
+    const ms = mode === 'timeout' && requested <= 0 ? settings.mute.defaultDuration : requested;
 
     if (mode === 'role') {
       const muteRoleId = settings.roles.mute;
@@ -209,6 +219,7 @@ export class ModerationService {
 
       assertModerationHierarchy({ guild, moderator: options.moderatorMember, target, action: 'ce mute' });
       await target.roles.add(muteRole, `${options.moderator.tag} : ${options.reason ?? 'mute'}`);
+
       const caseNumber = guildService.nextCaseId(guild.id);
       const entry = caseService.create({
         guildId: guild.id,
@@ -225,10 +236,18 @@ export class ModerationService {
         metadata: { mode: 'role', roleId: muteRole.id },
       });
       if (settings.modules.logs) await logModAction(guild, entry, { settings });
+
+      const dmSent = options.silent
+        ? false
+        : await notifyTarget(
+            target.user,
+            `🔇 Vous avez été **réduit au silence** sur **${guild.name}**${ms > 0 ? ` pendant **${formatDuration(ms)}**` : ' (durée illimitée)'}.\n**Raison :** ${options.reason?.trim() || 'Aucune raison fournie'}`,
+          );
+
       return {
         caseEntry: entry,
         message: `🔇 **${target.user.tag}** a reçu le rôle muet${ms > 0 ? ` pour **${formatDuration(ms)}**` : ' (illimité)'}. *Case #${caseNumber}*`,
-        dmSent: true,
+        dmSent,
       };
     }
 

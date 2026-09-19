@@ -23,6 +23,17 @@ Token révoqué, tronqué, ou entouré de guillemets/espace.
 ### `Used disallowed intents` / `Privileged intent provided is not enabled`
 Developer Portal → **Bot** → *Privileged Gateway Intents* : activez **SERVER MEMBERS INTENT** et **MESSAGE CONTENT INTENT**, puis **Save Changes** et redémarrez.
 
+### `Démarrage impossible [{}]` (aucun détail après le message)
+Ancien bug de journalisation : le vrai message de l'erreur était masqué. Il s'affiche désormais, par ex. `{"name":"Error","message":"Used disallowed intents"}` → voir la section ci-dessus.
+
+### `Publication des commandes impossible` — `Missing Access` (50001 / 403)
+L'URL en cause se termine par `guilds/<id>/commands` : c'est la publication sur `DEV_GUILD_ID` qui échoue. Trois causes possibles :
+1. **Le bot n'est pas sur ce serveur** (ou `DEV_GUILD_ID` est erroné) → mode développeur Discord → clic droit sur le serveur → *Copier l'identifiant du serveur*, et vérifiez que le bot en est membre.
+2. **Le bot a été invité sans le scope `applications.commands`** → réinvitez-le via *OAuth2 → URL Generator* avec les scopes `bot` **et** `applications.commands`.
+3. **`CLIENT_ID` ne correspond pas à l'application du token** → Developer Portal → *General Information* → *Application ID*.
+
+> La publication **globale** continue malgré cet échec (le bot publie désormais en global même si le serveur de développement est inaccessible). Seule la publication instantanée sur ce serveur est perdue.
+
 ### `Cannot find module 'discord.js'`
 Dépendances non installées : `npm install` (ou `npm ci`).
 
@@ -49,6 +60,7 @@ npm run build && npm start   # compilation puis exécution
 | Publication **globale** en cours (jusqu'à 1 h) | Définissez `DEV_GUILD_ID` (votre serveur) → publication instantanée |
 | Client Discord en cache | `Ctrl + R` (ou redémarrer l'application) |
 | Bot invité sans le scope `applications.commands` | Réinvitez-le avec **OAuth2 → URL Generator** : `bot` + `applications.commands` |
+| `403 Missing Access` sur `guilds/<id>/commands` | Bot absent du serveur `DEV_GUILD_ID`, scope `applications.commands` manquant, ou `CLIENT_ID` erroné (voir *Démarrage & connexion*) |
 | Commande renommée/supprimée | `/owner recharger` ou `npm run deploy:commands -- --clear` |
 | `CLIENT_ID` erroné | Developer Portal → General Information → Application ID |
 

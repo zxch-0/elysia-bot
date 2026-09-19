@@ -5,7 +5,7 @@ import {
   type GuildMember,
   type User,
 } from 'discord.js';
-import { timestampTag } from '../utils/duration';
+import { formatDuration, timestampTag } from '../utils/duration';
 
 /** Identité visuelle d'Elysia : dégradé violet/rose. */
 export const THEME = {
@@ -135,7 +135,7 @@ export function modActionEmbed(params: {
     { name: 'Modérateur', value: params.moderator, inline: true },
     {
       name: 'Durée',
-      value: params.duration ? `${Math.round(params.duration / 1000)} s` : 'Permanente',
+      value: params.duration ? formatDuration(params.duration) : 'Permanente',
       inline: true,
     },
   );

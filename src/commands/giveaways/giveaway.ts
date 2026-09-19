@@ -1,6 +1,5 @@
 import {
   ChannelType,
-  PermissionFlagsBits,
   SlashCommandBuilder,
   type TextChannel,
 } from 'discord.js';
@@ -96,7 +95,9 @@ const giveawayCommand: Command = {
   summary: 'Créer, terminer et relancer des giveaways',
   usage: ['/giveaway creer lot:Nitro 1 mois duree:3j gagnants:2 roles_requis:@Membre'],
   cooldown: 5,
-  permissions: { user: [PermissionFlagsBits.ManageGuild] },
+  // Pas de restriction Discord ici : `canManageGiveaways` ci-dessous autorise
+  // les administrateurs ET les rôles hôtes configurés (`/config roles-hotes`).
+  permissions: {},
   async autocomplete(interaction) {
     const guildId = interaction.guildId ?? '';
     const query = String(interaction.options.getFocused(true).value ?? '');
@@ -179,12 +180,19 @@ const giveawayCommand: Command = {
         blacklistedRoleIds: settings.giveaway.blacklistedRoleIds,
       });
 
-      const message = await channel.send({
-        content: pingRole ? `<@&${pingRole.id}> — un nouveau giveaway vient de commencer !` : '',
-        embeds: [giveawayService.buildEmbed(giveaway, ctx.guild)],
-        components: giveawayService.buildComponents(giveaway),
-        allowedMentions: { parse: pingRole ? ['roles'] : [] },
-      });
+      let message;
+      try {
+        message = await channel.send({
+          content: pingRole ? `<@&${pingRole.id}> — un nouveau giveaway vient de commencer !` : '',
+          embeds: [giveawayService.buildEmbed(giveaway, ctx.guild)],
+          components: giveawayService.buildComponents(giveaway),
+          allowedMentions: { parse: pingRole ? ['roles'] : [] },
+        });
+      } catch (error) {
+        // Message impossible à envoyer : on ne garde pas un giveaway orphelin.
+        giveawayService.delete(giveaway.id);
+        throw error;
+      }
       giveawayService.attachMessage(giveaway.id, message.id);
       await message.react('🎉').catch(() => undefined);
 
@@ -254,7 +262,7 @@ const giveawayCommand: Command = {
       if (!giveaway.ended) return ctx.error('Ce giveaway est encore en cours. Terminez-le d’abord avec `/giveaway terminer`.');
 
       const count = ctx.interaction.options.getInteger('gagnants') ?? 1;
-      const winners = giveawayService.reroll(giveaway, ctx.guild, count);
+      const winners = await giveawayService.reroll(giveaway, ctx.guild, count);
       const updated = giveawayService.get(giveaway.id)!;
       await giveawayService.updateMessage(ctx.guild, updated);
 

@@ -257,6 +257,81 @@ async function main(): Promise<void> {
   const helpJson = buildHelpEmbed(client, 0).toJSON();
   check('aide sans dépassement de champ (>1024)', (helpJson.fields ?? []).every((field) => field.value.length <= 1024));
 
+  // ── Régressions (bugs corrigés) ───────────────────────────────────────────
+  section('🐛 Régressions corrigées');
+  const { buildContext } = await import('../src/core/handlers/commandHandler');
+  const fakeInteraction: any = {
+    guild: { id: guildId },
+    member: { id: '666' },
+    channel: { id: '555', type: 0 },
+    options: {
+      get: (key: string) => (key === 'salon' ? { channel: { id: '777', type: 0 } } : null),
+      getSubcommand: () => 'liste',
+      getSubcommandGroup: () => null,
+    },
+  };
+  const ctxWithOption = buildContext(fakeInteraction, client);
+  check('ctx.channel : option fournie → salon de l’option', ctxWithOption.channel('salon', undefined, [0]).id === '777');
+
+  const noOptionInteraction: any = {
+    ...fakeInteraction,
+    options: { get: () => null, getSubcommand: () => 'liste', getSubcommandGroup: () => null },
+  };
+  const ctxNoOption = buildContext(noOptionInteraction, client);
+  check('ctx.channel : option absente → salon courant (bug /purge)', ctxNoOption.channel('salon', undefined, [0]).id === '555');
+
+  let stringThrew = false;
+  try {
+    ctxNoOption.string('introuvable');
+  } catch {
+    stringThrew = true;
+  }
+  check('ctx.string : option absente → erreur claire (pas le nom de la sous-commande)', stringThrew);
+
+  const { moderationService } = await import('../src/services/moderationService');
+  const muteGuildId = '333333333333333333';
+  const muteGuild: any = fakeGuild(muteGuildId);
+  muteGuild.members.me = { id: 'bot-1', roles: { highest: { position: 10 } } };
+  muteGuild.roles.cache.set('999', { id: '999', name: 'Muted' });
+  const muteTarget: any = {
+    id: '801',
+    user: { id: '801', tag: 'Cible#0001', createdTimestamp: Date.now() - 86_400_000, send: async () => undefined },
+    roles: { cache: new Map(), highest: { position: 1 }, add: async () => undefined },
+  };
+  guildService.update(muteGuildId, { modules: { logs: false }, roles: { mute: '999' }, mute: { mode: 'role' } });
+
+  const muteModerator: any = { id: '666', tag: 'Modo#0002' };
+  const muteModeratorMember: any = { id: '666', roles: { highest: { position: 5 } } };
+  const mutePerm = await moderationService.mute({
+    guild: muteGuild,
+    moderator: muteModerator,
+    moderatorMember: muteModeratorMember,
+    target: muteTarget,
+    reason: 'test perm',
+    duration: 0,
+    useRole: true,
+  });
+  check(
+    'mute « perm » (durée 0) en mode rôle → illimité',
+    mutePerm.caseEntry.duration === 0 && mutePerm.caseEntry.autoRevertAt === null,
+    mutePerm.caseEntry,
+  );
+
+  const muteTimed = await moderationService.mute({
+    guild: muteGuild,
+    moderator: muteModerator,
+    moderatorMember: muteModeratorMember,
+    target: muteTarget,
+    reason: 'test durée',
+    duration: 3_600_000,
+    useRole: true,
+  });
+  check(
+    'mute durée explicite en mode rôle → retrait automatique programmé',
+    muteTimed.caseEntry.duration === 3_600_000 && typeof muteTimed.caseEntry.autoRevertAt === 'number',
+    muteTimed.caseEntry,
+  );
+
   // ── Serveur web (routes) ──────────────────────────────────────────────────
   section('🌐 Serveur web');
   const { createWebServer } = await import('../src/web/server');

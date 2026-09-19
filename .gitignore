@@ -1,0 +1,30 @@
+# Dépendances
+node_modules/
+
+# Build
+dist/
+
+# Environnement (NE JAMAIS COMMITER LE TOKEN)
+.env
+.env.local
+.env.*.local
+
+# Données persistantes du bot (cases, giveaways, panneaux, config)
+data/
+assets/panels/*.png
+assets/panels/*.jpg
+assets/panels/*.jpeg
+assets/panels/*.gif
+assets/panels/*.webp
+
+# Logs
+*.log
+logs/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.tsbuildinfo

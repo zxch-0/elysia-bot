@@ -1,0 +1,44 @@
+# ────────────────────────────────────────────────────────────────
+#  Blueprint Render — Elysia Bot
+#  Déploiement en un clic : New + → Blueprint → sélectionnez ce dépôt.
+#  Documentation complète : docs/DEPLOIEMENT-RENDER-UPTIMEROBOT.md
+# ────────────────────────────────────────────────────────────────
+services:
+  - type: web
+    name: elysia-bot
+    runtime: node
+    plan: free
+    region: frankfurt # oregon | ohio | virginia | singapore
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: NODE_ENV
+        value: production
+      # Ces secrets doivent être renseignés dans le tableau de bord Render
+      # (Environment → Add Environment Variable) : jamais dans le dépôt !
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: DEV_GUILD_ID
+        sync: false
+      - key: OWNER_IDS
+        sync: false
+      - key: SELF_PING_URL
+        sync: false
+      # Réglages non sensibles
+      - key: HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: LOG_FORMAT
+        value: json # logs lisibles dans l'onglet Logs de Render
+      - key: DEFAULT_LOCALE
+        value: fr
+      - key: SELF_PING_INTERVAL
+        value: "14"

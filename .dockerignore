@@ -1,0 +1,14 @@
+node_modules
+dist
+data
+assets/panels/*.png
+assets/panels/*.jpg
+assets/panels/*.jpeg
+assets/panels/*.gif
+assets/panels/*.webp
+.env
+.env.*
+.git
+.github
+logs
+*.log

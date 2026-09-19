@@ -27,7 +27,7 @@ export function buildHelpEmbed(client: ElysiaClient, page = 0) {
   const embed = baseEmbed({
     title: '💜 Elysia — centre d’aide',
     description: [
-      `Bot tout-en-un : **modération**, **giveaways** et **panneaux de rôles**.`,
+      `Bot tout-en-un : **modération**, **giveaways**, **panneaux de rôles** et **mini-jeux**.`,
       `Préfixe : commandes slash uniquement — tape \`/\` puis le nom d’une commande.`,
       '',
       `**Commandes disponibles :** ${client.commands.size}`,
@@ -59,6 +59,7 @@ export function buildHelpEmbed(client: ElysiaClient, page = 0) {
       '`/rolepanel creer` — panneau de rôles avec boutons & image',
       '`/giveaway creer` — concours réservé aux admins',
       '`/ban`, `/mute`, `/warn`, `/purge` — modération complète',
+      '`/jeu liste` — mini-jeux (IA, duels, quiz) et classement',
     ].join('\n'),
   });
 

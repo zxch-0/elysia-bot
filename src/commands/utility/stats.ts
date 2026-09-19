@@ -7,6 +7,7 @@ import { formatDuration } from '../../utils/duration';
 import { giveawayService } from '../../services/giveawayService';
 import { caseService } from '../../services/caseService';
 import { panelService } from '../../services/panelService';
+import { gameService } from '../../services/gameService';
 
 const statsCommand: Command = {
   data: new SlashCommandBuilder()
@@ -39,6 +40,7 @@ const statsCommand: Command = {
       { name: '🎁 Giveaways actifs', value: humanizeNumber(giveawayService.listActive().length), inline: true },
       { name: '🎭 Panneaux', value: humanizeNumber(panelService.listGuild(ctx.guild.id).length), inline: true },
       { name: '📁 Cases de modération', value: humanizeNumber(caseService.total()), inline: true },
+      { name: '🎮 Parties en cours', value: `${humanizeNumber(gameService.activeCount())} (${humanizeNumber(gameService.totalPlayers())} joueur(s) classé(s))`, inline: true },
       {
         name: '🔢 Compteurs de session',
         value: [

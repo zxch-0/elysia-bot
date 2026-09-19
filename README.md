@@ -2,7 +2,7 @@
 
 # 💜 Elysia
 
-**Bot Discord tout-en-un : modération avancée, giveaways et panneaux de rôles avec images.**
+**Bot Discord tout-en-un : modération avancée, giveaways, panneaux de rôles avec images et mini-jeux avec classement.**
 
 `Node.js 20+` • `discord.js 14` • `TypeScript` • `Zéro base de données à installer`
 
@@ -40,6 +40,15 @@
 - **Images d'illustration** : URL **ou upload direct** — le fichier est stocké dans `assets/panels/` et renvoyé en pièce jointe, donc l'image ne disparaît jamais même si Discord purge son CDN.
 - `/embed creer` : **assistant complet** (modale → aperçu privé → choix des rôles → publication), couleurs, pied de page, style de chaque bouton.
 - Réparation/publication en un clic (`/rolepanel publier`), diagnostics automatiques (rôle trop haut, salon supprimé…), statistiques par rôle.
+
+### 🎮 Mini-jeux (10 jeux, classement par serveur)
+- **Morpion** et **Puissance 4** contre un membre, en partie ouverte ou contre l'IA (minimax imbattable, alpha-bêta à 4 niveaux avec profondeur itérative).
+- **Pierre-Feuille-Ciseaux** en plusieurs manches (variante Lézard-Spock), choix simultanés et secrets.
+- **Quiz** multijoueur chronométré : 7 thèmes, 3 difficultés, bonus de rapidité, révélation automatique, podium.
+- **Pendu** (9 thèmes, mode coopératif pour tout le salon), **Motus** (mot de 5 lettres, façon Wordle).
+- **Démineur** (premier clic toujours sûr, mode drapeau, chrono), **2048** (annulations limitées), **Blackjack** (jetons virtuels, doubler), **Memory** (solo chrono ou duel).
+- Invitations avec **Accepter / Refuser**, revanche en un clic, abandon, forfait automatique par inactivité.
+- **Statistiques persistantes** par joueur (`/jeu stats`) et **classement** général ou par jeu (`/jeu classement`). Module désactivable via `/config modules`.
 
 ### 🛠️ Configuration & infrastructure
 - `/config convivialite` : **toute la configuration en une seule commande**.
@@ -136,6 +145,7 @@ Liste complète et détaillée : **[docs/COMMANDES.md](docs/COMMANDES.md)**
 | 🎭 Rôles & embeds | `/rolepanel` `/embed` `/role` |
 | 🛠️ Configuration | `/config` `/autorole` |
 | ✨ Utilitaires | `/help` `/bot-stats` `/invite` |
+| 🎮 Mini-jeux | `/jeu` (`morpion`, `puissance4`, `pfc`, `memory`, `pendu`, `motus`, `quiz`, `demineur`, `2048`, `blackjack`, `stats`, `classement`, `liste`) |
 | 👑 Propriétaire | `/owner` (`statut`, `serveurs`, `quitter`, `diffuser`, `recharger`, `activite`, `nettoyer`) |
 
 ---
@@ -182,15 +192,17 @@ elysia-bot/
 ├── src/
 │   ├── index.ts                 # Entrée : base, client, serveur web, planificateur
 │   ├── core/                    # Client Discord, config, base JSON, erreurs, loaders
-│   ├── commands/                # 21 slash-commands classées par catégorie
+│   ├── commands/                # 22 slash-commands classées par catégorie
 │   │   ├── moderation/          #   ban, kick, mute, warn, purge, lock…
 │   │   ├── giveaways/           #   giveaway
 │   │   ├── roles/               #   rolepanel, embed, role
 │   │   ├── config/              #   config, autorole
 │   │   ├── utility/             #   help, bot-stats, invite
+│   │   ├── games/               #   jeu (10 mini-jeux + stats + classement)
 │   │   └── owner/               #   owner
-│   ├── modules/                 # Interactions : boutons, menus, modales, confirmations
-│   ├── services/                # Modération, cases, giveaways, panneaux, logs, planificateur
+│   ├── games/                   # Mini-jeux : moteurs purs (engine/), rendu Discord (ui/), données (data/)
+│   ├── modules/                 # Interactions : boutons, menus, modales, confirmations, mini-jeux
+│   ├── services/                # Modération, cases, giveaways, panneaux, logs, jeux, planificateur
 │   ├── ui/                      # Embeds, composants, thème, images
 │   ├── utils/                   # Durées, formatage, aléatoire, permissions
 │   └── web/                     # Serveur HTTP, tableau de bord, auto-ping, dry-run

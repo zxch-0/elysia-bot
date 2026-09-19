@@ -21,7 +21,7 @@ import type {
 
 export type Locale = 'fr' | 'en';
 
-export type CommandCategory = 'moderation' | 'giveaways' | 'roles' | 'config' | 'utility' | 'owner';
+export type CommandCategory = 'moderation' | 'giveaways' | 'roles' | 'config' | 'utility' | 'games' | 'owner';
 
 export interface CategoryMeta {
   id: CommandCategory;

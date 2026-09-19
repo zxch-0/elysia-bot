@@ -17,6 +17,7 @@ const MODULE_CHOICES = [
   { name: '📁 Logs (modération, messages, membres)', value: 'logs' },
   { name: '👋 Messages de bienvenue', value: 'welcome' },
   { name: '⚙️ Rôles automatiques', value: 'autoRole' },
+  { name: '🎮 Mini-jeux', value: 'games' },
 ] as const;
 
 /** Diagnostic de santé du serveur : permissions, salons, hiérarchie des rôles. */

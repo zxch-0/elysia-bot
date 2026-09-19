@@ -32,6 +32,12 @@ export const CATEGORIES: CategoryMeta[] = [
     description: 'Aide, statistiques du bot, invitations et outils du quotidien.',
   },
   {
+    id: 'games',
+    label: 'Mini-jeux',
+    emoji: '🎮',
+    description: 'Morpion, Puissance 4, quiz, pendu, Motus, démineur, 2048, blackjack, memory… avec classement.',
+  },
+  {
     id: 'owner',
     label: 'Propriétaire',
     emoji: '👑',

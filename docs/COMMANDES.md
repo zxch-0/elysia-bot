@@ -1,6 +1,6 @@
 # 📚 Référence complète des commandes — Elysia v1.0.0
 
-**21 commandes slash.** Les paramètres marqués *(opt)* sont facultatifs, les autres sont obligatoires.
+**22 commandes slash.** Les paramètres marqués *(opt)* sont facultatifs, les autres sont obligatoires.
 Sauf mention contraire, toutes les réponses sont **privées** (éphémères) : personne ne voit vos manipulations.
 
 > 🔑 **Permissions** — entre crochets : `[Admin]` = administrateur du serveur, `[Perm]` = permission Discord spécifique, `[Staff]` = rôle staff configuré via `/config roles-staff`, `[Hôte]` = rôle hôte de giveaway, `[Owner]` = `OWNER_IDS`.
@@ -203,6 +203,34 @@ Le brouillon expire après 20 minutes et reste privé jusqu'à validation.
 
 ---
 
+## 🎮 Mini-jeux
+
+### `/jeu` — 10 mini-jeux interactifs avec classement *(réponses publiques)*
+
+Toutes les parties se jouent dans le salon avec des boutons, menus et modales. Les parties inactives expirent automatiquement (le joueur qui n'a pas joué perd par forfait en duel). Le module peut être désactivé avec `/config modules module:🎮 Mini-jeux actif:false`.
+
+| Sous-commande | Paramètres | Description |
+|---|---|---|
+| `morpion` | `adversaire?` `niveau?` (facile, normal, imbattable) `ouvert?` | Morpion 3×3. Sans adversaire : IA (minimax). `ouvert:true` : le premier membre qui clique **Rejoindre** joue. |
+| `puissance4` | `adversaire?` `niveau?` (facile, normal, difficile, expert) `ouvert?` | Puissance 4 — IA négamax alpha-bêta avec approfondissement itératif et budget de temps (expert ≈ 12 coups d’avance). |
+| `pfc` | `adversaire?` `variante?` (classique, lezard-spock) `manches?` (1, 3, 5, 7) `ouvert?` | Pierre-Feuille-Ciseaux au meilleur des N manches, choix simultanés et secrets. |
+| `memory` | `adversaire?` `paires?` (6, 8, 10) `ouvert?` | Memory : solo chronométré ou duel au tour par tour (une paire trouvée = on rejoue). |
+| `pendu` | `theme?` (9 thèmes ou aléatoire) `mode?` (solo, tous) | Pendu : lettres via menus déroulants, proposition du mot entier via modale. Mode `tous` : tout le salon coopère. |
+| `motus` | — | Mot mystère de 5 lettres en 6 essais (🟩 bien placée, 🟨 présente, ⬛ absente), clavier récapitulatif. |
+| `quiz` | `theme?` (7 thèmes ou mélangés) `difficulte?` `questions?` (3–20) `secondes?` (10–60) | Quiz multijoueur chronométré : tout le monde répond, bonus de rapidité, révélation automatique, podium final. L'hôte peut **Passer** ou **Arrêter**. |
+| `demineur` | `mines?` (2–8) | Démineur 5×4 : premier clic toujours sûr, mode drapeau, chrono et compteur de coups. |
+| `2048` | — | 2048 sur grille 4×4 avec flèches, 3 annulations et meilleur score. |
+| `blackjack` | — | Table de blackjack (100 jetons virtuels) : miser, tirer, rester, doubler. Blackjack payé 3:2. |
+| `stats` | `membre?` | Statistiques d'un joueur : points, rang, victoires/défaites/nuls par jeu, séries et records. |
+| `classement` | `jeu?` | Top 10 du serveur (points cumulés) — général ou limité à un jeu. |
+| `liste` | — | Catalogue des jeux avec une description de chacun. |
+
+**Points de classement (exemples)** : victoire contre un membre (morpion 10, Puissance 4 15), contre l'IA selon le niveau (Puissance 4 expert : 35), Motus selon le nombre d'essais (14 → 4), quiz : moitié du score obtenu, démineur : 3 × nombre de mines, 2048 : selon la meilleure tuile.
+
+**Limites** : 3 parties actives par hôte, 8 par salon. Une partie terminée reste affichée avec un bouton **Revanche / Rejouer** pendant 15 minutes.
+
+---
+
 ## 👑 Propriétaire `[Owner]`
 
 | Sous-commande | Description |
@@ -246,3 +274,4 @@ Un refus renvoie toujours un message **explicatif** (permission manquante, rôle
 | Boutons `Confirmer/Annuler` | Toute action destructrice (purge globale, reset, suppression) — seul l'auteur peut confirmer, expiration 60 à 90 s |
 | Pagination de `/help` | Navigation ⏮️ ◀️ ▶️ ⏭️ |
 | Boutons du créateur d'embed | Rôles, image, salon, type de composant, couleurs, publication |
+| Boutons / menus / modales des mini-jeux (`g:`) | Cases de jeu, choix de réponse, lettres du pendu, mots de Motus, mises du blackjack, Accepter/Refuser/Rejoindre, Abandonner, Revanche — seuls les joueurs concernés peuvent agir |

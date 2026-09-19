@@ -20,6 +20,7 @@ export interface GuildSettings extends Document {
     logs: boolean;
     welcome: boolean;
     autoRole: boolean;
+    games: boolean;
   };
   channels: {
     modLog?: string | null;
@@ -84,6 +85,7 @@ export function defaultGuildSettings(guildId: string): GuildSettings {
       logs: true,
       welcome: false,
       autoRole: false,
+      games: true,
     },
     channels: {},
     roles: {

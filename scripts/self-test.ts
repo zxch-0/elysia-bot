@@ -243,7 +243,9 @@ async function main(): Promise<void> {
   check('commande /rolepanel présente', client.commands.has('rolepanel'));
   check('commande /embed présente', client.commands.has('embed'));
   check('commandes uniques (noms sans doublon)', new Set([...client.commands.keys()]).size === client.commands.size);
-  check('6 modules d’interaction enregistrés', client.modules.size === 6);
+  check('7 modules d’interaction enregistrés', client.modules.size === 7, client.modules.size);
+  check('commande /jeu présente', client.commands.has('jeu'));
+  check('module de mini-jeux (préfixe g) enregistré', client.modules.has('g'));
   check('cooldown bloqué au second appel immédiat', (() => {
     const fake = { user: { id: '1' }, commandName: 'giveaway' } as any;
     client.checkCooldown(fake, 5);
@@ -331,6 +333,211 @@ async function main(): Promise<void> {
     muteTimed.caseEntry.duration === 3_600_000 && typeof muteTimed.caseEntry.autoRevertAt === 'number',
     muteTimed.caseEntry,
   );
+
+  // ── Mini-jeux ─────────────────────────────────────────────────────────────
+  section('🎮 Mini-jeux — moteurs');
+  const ttt = await import('../src/games/engine/tictactoe');
+  {
+    // L'IA imbattable ne perd jamais face à des coups aléatoires.
+    let lost = 0;
+    for (let game = 0; game < 60; game += 1) {
+      const board = ttt.createBoard();
+      let current: 1 | 2 = game % 2 === 0 ? 1 : 2;
+      while (!ttt.findWinner(board) && !ttt.isFull(board)) {
+        const moves = ttt.availableMoves(board);
+        const move = current === 2 ? ttt.bestMove(board, 2, 'imbattable') : moves[Math.floor(Math.random() * moves.length)];
+        board[move] = current;
+        current = ttt.opponentOf(current);
+      }
+      if (ttt.findWinner(board)?.mark === 1) lost += 1;
+    }
+    check('morpion : IA imbattable invaincue sur 60 parties', lost === 0, lost);
+    const board = ttt.createBoard();
+    board[0] = 1;
+    board[1] = 1;
+    check('morpion : victoire immédiate détectée', ttt.bestMove(board, 1, 'imbattable') === 2);
+    check('morpion : blocage de la menace adverse', ttt.bestMove(board, 2, 'normal') === 2);
+  }
+
+  const c4 = await import('../src/games/engine/connectFour');
+  {
+    const board = c4.createBoard();
+    for (const column of [0, 1, 0, 1, 0, 1]) c4.play(board, column, board.moves % 2 === 0 ? 1 : 2);
+    const row = c4.play(board, 0, 1);
+    check('puissance 4 : alignement vertical détecté', c4.winningLine(board, row, 0)?.length === 4);
+    // Disque 1 aligne 2-3-4 sur la première rangée : menace double (colonnes 1 et 5).
+    const threat = c4.createBoard();
+    for (const [column, disc] of [[2, 1], [6, 2], [3, 1], [0, 2], [4, 1]] as Array<[number, 1 | 2]>) c4.play(threat, column, disc);
+    const started = Date.now();
+    const move = c4.bestMove(threat, 1, 'expert');
+    check('puissance 4 : l’IA prend la victoire immédiate', move.column === 1 || move.column === 5, move);
+    check('puissance 4 : réflexion sous la seconde', Date.now() - started < 1_000, Date.now() - started);
+    check('puissance 4 : l’IA bloque une menace adverse', [1, 5].includes(c4.bestMove(threat, 2, 'normal').column));
+  }
+
+  const motus = await import('../src/games/engine/motus');
+  check('motus : lettres répétées scorées correctement', motus.scoreGuess('ALLEE', 'ELEVE').join(',') === 'present,correct,absent,absent,correct');
+  check('motus : mot exact → tout vert', motus.scoreGuess('PIANO', 'PIANO').every((state) => state === 'correct'));
+  check('motus : normalisation des accents', motus.normalizeGuess('élève') === 'ELEVE');
+  check('motus : longueur invalide refusée', motus.normalizeGuess('abc') === null);
+
+  const words = await import('../src/games/data/words');
+  check('motus : dictionnaire de mots de 5 lettres valide', words.MOTUS_WORDS.length >= 300 && words.MOTUS_WORDS.every((word) => /^[A-Z]{5}$/.test(word)));
+  check('motus : dictionnaire sans doublon', new Set(words.MOTUS_WORDS).size === words.MOTUS_WORDS.length);
+  check(
+    'pendu : chaque thème a au moins 20 mots',
+    Object.values(words.HANGMAN_WORDS).every((list) => list.length >= 20 && list.every((word) => word.length >= 4)),
+  );
+
+  const hangman = await import('../src/games/engine/hangman');
+  {
+    const state = hangman.createHangman('animaux');
+    const letter = state.word[0];
+    check('pendu : lettre présente → hit', hangman.guessLetter(state, letter.toLowerCase(), 'u1') === 'hit');
+    check('pendu : lettre répétée → repeat', hangman.guessLetter(state, letter, 'u1') === 'repeat');
+    check('pendu : caractère invalide refusé', hangman.guessLetter(state, '3', 'u1') === 'invalid');
+    const before = state.errors;
+    check('pendu : mot faux → erreur', hangman.guessWord(state, 'zzzzzz', 'u2') === false && state.errors === before + 1);
+    check('pendu : mot juste → victoire', hangman.guessWord(state, state.display, 'u2') && hangman.isWon(state) && state.solvedBy === 'u2');
+  }
+
+  const questions = await import('../src/games/data/questions');
+  check('quiz : au moins 100 questions', questions.QUIZ_QUESTIONS.length >= 100, questions.QUIZ_QUESTIONS.length);
+  check(
+    'quiz : 4 réponses distinctes par question',
+    questions.QUIZ_QUESTIONS.every((question) => question.answers.length === 4 && new Set(question.answers).size === 4),
+  );
+  check(
+    'quiz : chaque thème est couvert',
+    (Object.keys(questions.QUIZ_THEMES) as Array<keyof typeof questions.QUIZ_THEMES>).every((theme) =>
+      questions.QUIZ_QUESTIONS.some((question) => question.theme === theme),
+    ),
+  );
+  const quiz = await import('../src/games/engine/quiz');
+  {
+    const prepared = quiz.pickQuestions(5, 'geographie', 'mix');
+    check('quiz : sélection par thème', prepared.length === 5 && prepared.every((question) => question.theme === 'geographie'));
+    const source = questions.QUIZ_QUESTIONS[0];
+    const shuffled = quiz.prepare(source);
+    check('quiz : la bonne réponse suit le mélange', shuffled.answers[shuffled.correct] === source.answers[0]);
+    check('quiz : bonus de rapidité décroissant', quiz.scoreAnswer(0, 20_000, 1) > quiz.scoreAnswer(20_000, 20_000, 1));
+  }
+
+  const mines = await import('../src/games/engine/minesweeper');
+  {
+    let safeFirstClick = true;
+    let cleared = 0;
+    for (let round = 0; round < 100; round += 1) {
+      const state = mines.createMinesweeper(6);
+      mines.reveal(state, 7);
+      if (state.mineCells![7]) safeFirstClick = false;
+      for (let index = 0; index < mines.MS_CELLS; index += 1) if (!state.mineCells![index]) mines.reveal(state, index);
+      if (mines.isWon(state)) cleared += 1;
+    }
+    check('démineur : premier clic jamais miné', safeFirstClick);
+    check('démineur : victoire détectée après révélation des cases sûres', cleared === 100, cleared);
+    check('démineur : voisinage du coin = 3 cases', mines.neighbours(0).length === 3);
+  }
+
+  const g2048 = await import('../src/games/engine/game2048');
+  check('2048 : fusion simple [2,2,4,0] → [4,4,0,0]', g2048.slideLine([2, 2, 4, 0]).line.join(',') === '4,4,0,0');
+  check('2048 : pas de double fusion [2,2,2,2] → [4,4,0,0]', g2048.slideLine([2, 2, 2, 2]).line.join(',') === '4,4,0,0');
+  check('2048 : grille pleine sans fusion = fin', !g2048.canMove([2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 2]));
+  {
+    const state = g2048.createGame();
+    check('2048 : deux tuiles au départ', state.grid.filter((value) => value > 0).length === 2);
+    const before = [...state.grid];
+    let moved = false;
+    for (const direction of ['left', 'right', 'up', 'down'] as const) if (g2048.move(state, direction)) { moved = true; break; }
+    check('2048 : annulation restaure la grille', moved && g2048.undo(state) && state.grid.join(',') === before.join(','));
+  }
+
+  const blackjack = await import('../src/games/engine/blackjack');
+  check('blackjack : as souple (A+K = 21)', blackjack.handValue([{ rank: 'A', suit: '♠' }, { rank: 'K', suit: '♥' }]).total === 21);
+  check('blackjack : as rétrogradés (A+A+9 = 21)', blackjack.handValue([{ rank: 'A', suit: '♠' }, { rank: 'A', suit: '♥' }, { rank: '9', suit: '♦' }]).total === 21);
+  {
+    let dealerRule = true;
+    for (let round = 0; round < 200; round += 1) {
+      const state = blackjack.createBlackjack();
+      while (!state.finished) blackjack.stand(state);
+      const dealer = blackjack.handValue(state.dealer).total;
+      if (!blackjack.isBlackjack(state.player) && dealer < 17) dealerRule = false;
+    }
+    check('blackjack : le croupier tire jusqu’à 17', dealerRule);
+  }
+
+  const rps = await import('../src/games/engine/rps');
+  check('pfc : pierre bat ciseaux', rps.resolveRound('pierre', 'ciseaux') === 1 && rps.resolveRound('ciseaux', 'pierre') === 2);
+  check('pfc : spock bat pierre, lézard bat spock', rps.resolveRound('spock', 'pierre') === 1 && rps.resolveRound('lezard', 'spock') === 1);
+  check('pfc : chaque coup étendu bat exactement 2 coups', rps.EXTENDED_MOVES.every((move) => rps.EXTENDED_MOVES.filter((other) => rps.resolveRound(move, other) === 1).length === 2));
+
+  const memory = await import('../src/games/engine/memory');
+  {
+    const state = memory.createMemory(8);
+    const twin = state.cards.indexOf(state.cards[0], 1);
+    check('memory : 16 cartes / 8 symboles', state.cards.length === 16 && new Set(state.cards).size === 8);
+    check('memory : paire détectée', memory.flip(state, 0) === 'first' && memory.flip(state, twin) === 'match' && state.found[0] === 1);
+    const other = state.cards.findIndex((_, index) => !state.matched[index]);
+    const different = state.cards.findIndex((symbol, index) => !state.matched[index] && symbol !== state.cards[other]);
+    check('memory : paire ratée', memory.flip(state, other) === 'first' && memory.flip(state, different) === 'mismatch');
+  }
+
+  section('🎮 Mini-jeux — sessions, rendu et statistiques');
+  const { gameService } = await import('../src/services/gameService');
+  const { registerGames, GAME_DEFINITIONS } = await import('../src/games/registry');
+  registerGames();
+  check('10 jeux enregistrés', gameService.listDefinitions().length === 10 && GAME_DEFINITIONS.length === 10);
+
+  const { createTicTacToe } = await import('../src/games/ui/tictactoe');
+  const host = { id: '42', name: 'Alice' };
+  const guest = { id: '43', name: 'Bob' };
+  {
+    const solo = createTicTacToe({ guildId: 'g1', channelId: 'c1', host, level: 'imbattable' });
+    check('session IA créée en état « playing »', solo.status === 'playing' && solo.players[1].id === 'ai');
+    const payload = gameService.definition(solo.game)!.render(solo);
+    check('rendu morpion : 9 cases + 1 rangée de contrôle', payload.components?.length === 4);
+    const duel = createTicTacToe({ guildId: 'g1', channelId: 'c1', host, opponent: guest });
+    check('défi direct en salle d’attente', duel.status === 'waiting' && duel.players.length === 2);
+    const lobby = gameService.definition(duel.game)!.render(duel);
+    check('rendu salle d’attente : boutons accepter/refuser/annuler', (lobby.components?.[0] as any)?.components?.length === 3);
+    gameService.finish(duel, 'test');
+    const disabled = gameService.definition(solo.game)!.render(solo, { disabled: true });
+    check('rendu désactivé : plus de bouton actif', (disabled.components ?? []).every((row: any) => row.components.every((button: any) => button.data.disabled === true)));
+    gameService.finish(solo, 'test');
+  }
+  {
+    const created = [0, 1, 2].map(() => createTicTacToe({ guildId: 'g1', channelId: 'c1', host }));
+    let blocked = false;
+    try {
+      createTicTacToe({ guildId: 'g1', channelId: 'c1', host });
+    } catch {
+      blocked = true;
+    }
+    check('limite de 3 parties simultanées par hôte', blocked);
+    for (const session of created) gameService.finish(session, 'test');
+  }
+  {
+    const { createQuizSession } = await import('../src/games/ui/quiz');
+    const quizSession = createQuizSession({ guildId: 'g1', channelId: 'c1', host, count: 3, secondsPerQuestion: 10 });
+    check('quiz : 3 questions préparées et minuterie armée', quizSession.state.questions.length === 3 && quizSession.timers.size === 1);
+    const payload = gameService.definition('quiz')!.render(quizSession);
+    check('quiz : 4 boutons de réponse', (payload.components?.[0] as any)?.components?.length === 4);
+    gameService.finish(quizSession, 'test');
+    check('quiz : minuteries annulées à la fin', quizSession.timers.size === 0);
+  }
+  {
+    const first = { ...gameService.record({ guildId: 'g1', userId: '42', tag: 'Alice', game: 'motus', result: 'win', points: 12, best: 4, betterIf: 'lower' }) };
+    const second = { ...gameService.record({ guildId: 'g1', userId: '42', tag: 'Alice', game: 'motus', result: 'win', points: 8, best: 6, betterIf: 'lower' }) };
+    gameService.record({ guildId: 'g1', userId: '42', tag: 'Alice', game: 'motus', result: 'loss' });
+    gameService.record({ guildId: 'g1', userId: '43', tag: 'Bob', game: 'quiz', result: 'draw', points: 30 });
+    check('stats : victoires, série et points cumulés', first.wins === 1 && second.streak === 2 && second.points === 20, { first, second });
+    check('stats : record « plus petit est meilleur » conservé', gameService.stats('g1', '42')?.games.motus?.best === 4);
+    check('stats : défaite remet la série à zéro', gameService.stats('g1', '42')?.games.motus?.streak === 0);
+    const board = gameService.leaderboard('g1', 10);
+    check('classement général trié par points', board[0]?.stats.userId === '43' && board[1]?.stats.userId === '42');
+    check('classement par jeu', gameService.leaderboard('g1', 10, 'motus')[0]?.stats.userId === '42');
+    check('rang du joueur', gameService.rank('g1', '42') === 2 && gameService.rank('g1', 'inconnu') === null);
+  }
 
   // ── Serveur web (routes) ──────────────────────────────────────────────────
   section('🌐 Serveur web');

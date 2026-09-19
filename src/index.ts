@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     await publishCommands(client);
   } catch (error) {
     log.error('Publication des commandes impossible (le bot démarre quand même)', error as Error);
-    log.warn('➜ Vérifiez DISCORD_TOKEN et CLIENT_ID, ou lancez `npm run deploy:commands`.');
+    log.warn('➜ Vérifiez DISCORD_TOKEN, ainsi que CLIENT_ID (l’Application ID de la MÊME application que le token).');
   }
 
   // 5. Connexion à Discord
@@ -102,6 +102,42 @@ async function main(): Promise<void> {
   await client.login(config.token);
 }
 
+/**
+ * Traduit une erreur de démarrage en pistes concrètes.
+ * Les erreurs de connexion Discord sont de simples `Error("Used disallowed
+ * intents")`, `Error("Authentication failed")`… peu explicites sans contexte.
+ */
+function startupHints(error: unknown): string[] {
+  const err = error as { message?: string; code?: string | number };
+  const message = `${err.message ?? ''}`.toLowerCase();
+  const details = `${err.message ?? ''} ${err.code ?? ''}`.toLowerCase();
+  const hints: string[] = [];
+
+  if (message.includes('disallowed intents')) {
+    hints.push(
+      '➜ Cause : intents privilégiés désactivés. Developer Portal → votre application → Bot → Privileged Gateway Intents :',
+      '   activez SERVER MEMBERS INTENT et MESSAGE CONTENT INTENT, « Save Changes », puis redéployez.',
+    );
+  }
+  if (message.includes('authentication failed') || message.includes('invalid token') || err.code === 'TokenInvalid') {
+    hints.push(
+      '➜ Cause : token invalide. Developer Portal → Bot → Reset Token, puis mettez à jour DISCORD_TOKEN',
+      '   (sans guillemets, sans espace, sur une seule ligne) et redéployez.',
+    );
+  }
+  if (message.includes('sharding')) {
+    hints.push('➜ Cause : plus de 2 500 serveurs — le sharding est requis (non géré par cette version).');
+  }
+  if (/(enotfound|etimedout|econnrefused|econnreset|fetch failed|network socket)/.test(details)) {
+    hints.push('➜ Cause : discord.com injoignable depuis l’hébergeur (réseau/DNS). Relancez le déploiement.');
+  }
+
+  if (!hints.length) {
+    hints.push('➜ Relancez avec LOG_LEVEL=debug pour la trace complète, et vérifiez DISCORD_TOKEN / CLIENT_ID.');
+  }
+  return hints;
+}
+
 // ── Gestion des signaux et des erreurs non capturées ─────────────────────────
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
@@ -113,5 +149,6 @@ process.on('uncaughtException', (error) => {
 
 main().catch(async (error) => {
   log.error('Démarrage impossible', error as Error);
+  for (const hint of startupHints(error)) log.error(hint);
   await shutdown('erreur fatale', 1);
 });

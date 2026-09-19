@@ -34,8 +34,20 @@ export async function publishCommands(client: ElysiaClient, options: { clear?: b
   }
 
   if (config.devGuildId) {
-    await rest.put(Routes.applicationGuildCommands(applicationId, config.devGuildId), { body });
-    log.success(`${body.length} commande(s) publiée(s) sur le serveur de développement ${config.devGuildId}`);
+    try {
+      await rest.put(Routes.applicationGuildCommands(applicationId, config.devGuildId), { body });
+      log.success(`${body.length} commande(s) publiée(s) sur le serveur de développement ${config.devGuildId}`);
+    } catch (error) {
+      // 403 « Missing Access » : le serveur DEV_GUILD_ID est inaccessible pour
+      // l'application. On n'abandonne pas : la publication globale continue.
+      log.warn(
+        `Publication sur le serveur de développement ${config.devGuildId} impossible — poursuite avec la publication globale`,
+        error as Error,
+      );
+      log.warn('➜ Vérifiez que le bot est bien PRÉSENT sur ce serveur (DEV_GUILD_ID correct ?)');
+      log.warn('➜ Vérifiez qu’il a été invité avec le scope « applications.commands » (OAuth2 → URL Generator : bot + applications.commands)');
+      log.warn('➜ Vérifiez que CLIENT_ID correspond à l’Application ID de la même application que DISCORD_TOKEN');
+    }
     // On publie aussi en global pour que le bot fonctionne partout.
     await rest.put(Routes.applicationCommands(applicationId), { body });
     log.success(`${body.length} commande(s) publiée(s) globalement`);

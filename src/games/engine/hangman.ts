@@ -1,5 +1,5 @@
 import { pickOne } from '../../utils/random';
-import { HANGMAN_THEMES, HANGMAN_WORDS, normalizeWord, type HangmanTheme } from '../data/words';
+import { HANGMAN_THEMES, HANGMAN_WORDS, normalizeWord, type HangmanTheme } from '../content/words';
 
 export const MAX_ERRORS = 6;
 

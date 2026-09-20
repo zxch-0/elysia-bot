@@ -1,4 +1,6 @@
+import { ActionRowBuilder, type Interaction } from 'discord.js';
 import type { ElysiaClient } from '../core/client';
+import { isIgnorableError } from '../core/errors';
 import { logger } from '../core/logger';
 import type { InteractionModule } from '../core/types';
 import { GAME_IDS, type GameId } from '../games/types';
@@ -7,6 +9,31 @@ import { gameService } from '../services/gameService';
 import { guildService } from '../services/guildService';
 
 const log = logger.child('games');
+
+/**
+ * Fige les composants d'un message dont la partie n'existe plus (expiration,
+ * redémarrage du bot) : l'utilisateur ne reste pas face à des boutons morts.
+ * Retourne vrai si le message a pu être mis à jour (l'interaction est alors acquittée).
+ */
+async function freezeOrphanMessage(interaction: Interaction): Promise<boolean> {
+  if (!interaction.isMessageComponent()) return false;
+  const rows = interaction.message?.components ?? [];
+  if (rows.length === 0) return false;
+  try {
+    const disabled = rows.map((row) => {
+      const builder = ActionRowBuilder.from(row as never) as ActionRowBuilder<any>;
+      for (const component of builder.components) {
+        if (typeof (component as { setDisabled?: unknown }).setDisabled === 'function') (component as { setDisabled(value: boolean): unknown }).setDisabled(true);
+      }
+      return builder;
+    });
+    await interaction.update({ components: disabled });
+    return true;
+  } catch (error) {
+    if (!isIgnorableError(error)) log.debug('Impossible de figer un message orphelin', error);
+    return interaction.replied || interaction.deferred;
+  }
+}
 
 /**
  * Interactions des mini-jeux.
@@ -24,6 +51,7 @@ export const gameModule: InteractionModule = {
     const definition = gameService.definition(game as GameId);
     const session = sessionId ? gameService.get(sessionId) : undefined;
     if (!definition || !session || session.game !== game) {
+      await freezeOrphanMessage(interaction);
       await deny(
         interaction,
         'Cette partie n’est plus en mémoire (expirée ou bot redémarré). Relancez-en une avec `/jeu` !',
@@ -38,6 +66,11 @@ export const gameModule: InteractionModule = {
     }
     if (interaction.guildId && guildService.get(interaction.guildId).modules.games === false) {
       await deny(interaction, 'Les mini-jeux sont désactivés sur ce serveur (`/config modules`).');
+      return;
+    }
+    if (session.supersededBy) {
+      // Clic « en retard » sur une partie déjà remplacée par une revanche.
+      await deny(interaction, 'Une nouvelle partie a déjà été lancée sur ce message : utilisez les boutons affichés maintenant.', '🔄 Partie remplacée');
       return;
     }
 

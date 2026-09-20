@@ -227,7 +227,7 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 
 **Points de classement (exemples)** : victoire contre un membre (morpion 10, Puissance 4 15), contre l'IA selon le niveau (Puissance 4 expert : 35), Motus selon le nombre d'essais (14 → 4), quiz : moitié du score obtenu, démineur : 3 × nombre de mines, 2048 : selon la meilleure tuile.
 
-**Limites** : 3 parties actives par hôte, 8 par salon. Une partie terminée reste affichée avec un bouton **Revanche / Rejouer** pendant 15 minutes.
+**Limites** : 3 parties actives par hôte, 8 par salon. Une partie terminée reste affichée avec un bouton **Revanche / Rejouer** pendant 15 minutes (le bouton est ensuite retiré automatiquement). Entre membres, la revanche envoie un **nouveau défi** que l'adversaire doit accepter ; contre l'IA ou en solo, la nouvelle partie démarre aussitôt sur le même message.
 
 ---
 

@@ -16,7 +16,7 @@ import {
   type MinesweeperState,
 } from '../engine/minesweeper';
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
-import { DIGIT_EMOJI, cid, deny, endRows, formatElapsed, isPlayer, mention, quitButton, rememberMessage, sessionFooterLine, updateGame } from './common';
+import { DIGIT_EMOJI, canRematch, cid, deny, endRows, formatElapsed, isPlayer, linkRematch, mention, quitButton, rememberMessage, sessionFooterLine, updateGame } from './common';
 
 export interface MinesweeperSessionState extends MinesweeperState {
   won: boolean;
@@ -138,10 +138,9 @@ export const minesweeperGame: GameDefinition<MinesweeperSessionState> = {
     const { state } = session;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La partie est encore en cours.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Seul le joueur de cette partie peut rejouer. Lancez la vôtre avec `/jeu demineur` !');
+      if (!(await canRematch(interaction, session))) return;
       const fresh = createMinesweeperSession({ guildId: session.guildId, channelId: session.channelId, host: session.players[0], mines: state.mines });
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

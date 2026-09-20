@@ -105,6 +105,39 @@ export function sessionFooterLine(session: GameSession<any>): string {
   return `*Partie \`${session.id}\` • expire ${timestampTag(session.expiresAt, 'R')} sans action.*`;
 }
 
+/**
+ * Installe une revanche sur le message de la partie précédente : l'ancienne
+ * partie est marquée comme remplacée (plus de double revanche, plus de
+ * rafraîchissement concurrent) et la nouvelle hérite du message.
+ */
+export function linkRematch(previous: GameSession<any>, fresh: GameSession<any>, interaction: GameComponentInteraction): void {
+  gameService.supersede(previous, fresh, interaction.message?.id ?? null);
+}
+
+/** Vérifie qu'une revanche est possible ; répond en privé sinon. */
+export async function canRematch(interaction: GameComponentInteraction, session: GameSession<any>, ownersOnly = true): Promise<boolean> {
+  if (session.status !== 'finished') {
+    await deny(interaction, 'La partie est encore en cours.');
+    return false;
+  }
+  if (session.supersededBy) {
+    await deny(interaction, 'Une revanche a déjà été lancée depuis cette partie.', '🔄 Partie remplacée');
+    return false;
+  }
+  if (ownersOnly && !isPlayer(session, interaction.user.id)) {
+    await deny(interaction, `Seuls les joueurs de cette partie peuvent la relancer. Lancez la vôtre avec \`/jeu ${session.game}\` !`);
+    return false;
+  }
+  return true;
+}
+
+/** Le joueur qui clique et son partenaire (humain ou IA) dans une partie à deux. */
+export function rematchPair(session: GameSession<any>, userId: string): { me: GamePlayer; other: GamePlayer | undefined } {
+  const me = session.players.find((player) => player.id === userId) ?? session.players[0];
+  const other = session.players.find((player) => player.id !== me.id);
+  return { me, other };
+}
+
 /** Bouton d'abandon standard. */
 export function quitButton(session: GameSession<any>, label = 'Abandonner'): ButtonSpec {
   return { id: cid(session, 'quit'), label, emoji: '🏳️', style: 'danger' };

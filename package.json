@@ -16,7 +16,8 @@
     "deploy:commands": "tsx scripts/deploy-commands.ts",
     "validate": "tsx scripts/validate.ts",
     "preview": "tsx src/index.ts",
-    "self-test": "tsx scripts/self-test.ts"
+    "self-test": "tsx scripts/self-test.ts",
+    "fuzz:games": "tsx scripts/games-fuzz.ts"
   },
   "dependencies": {
     "discord.js": "^14.16.3",

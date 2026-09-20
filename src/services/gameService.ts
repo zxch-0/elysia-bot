@@ -1,3 +1,4 @@
+import { Routes } from 'discord.js';
 import type { ElysiaClient } from '../core/client';
 import { db, type Collection, type Document } from '../core/database';
 import { BotError, isIgnorableError } from '../core/errors';
@@ -130,10 +131,23 @@ export class GameService {
       updatedAt: now,
       expiresAt: now + idle,
       outcome: null,
+      supersededBy: null,
       timers: new Set(),
     };
     this.sessions.set(id, session);
     return session;
+  }
+
+  /**
+   * Fait succéder `next` à `previous` sur le même message Discord (revanche).
+   * L'ancienne partie ne pourra plus ni relancer une revanche ni rafraîchir
+   * le message — cela évite deux parties actives sur un seul message.
+   */
+  supersede(previous: GameSession<any>, next: GameSession<any>, messageId: string | null): void {
+    previous.supersededBy = next.id;
+    next.messageId = messageId ?? previous.messageId;
+    // Elle est déjà terminée : inutile de la garder longtemps en mémoire.
+    previous.expiresAt = Math.min(previous.expiresAt, Date.now() + 60_000);
   }
 
   get<S = unknown>(id: string): GameSession<S> | undefined {
@@ -188,20 +202,26 @@ export class GameService {
     return count;
   }
 
-  /** Ré-affiche le message Discord d'une partie à partir de son état courant. */
+  /**
+   * Ré-affiche le message Discord d'une partie à partir de son état courant.
+   * Le message est modifié directement via l'API REST (PATCH) : pas besoin de
+   * récupérer le salon ni l'historique, donc aucune permission « Voir le
+   * salon » / « Lire l'historique » n'est requise pour éditer notre message.
+   */
   async refreshMessage(session: GameSession<any>, options: { disabled?: boolean } = {}): Promise<boolean> {
     const client = this.client;
     const definition = this.definitions.get(session.game);
-    if (!client || !definition || !session.messageId) return false;
+    if (!client || !definition || !session.messageId || session.supersededBy) return false;
     try {
-      const channel = await client.channels.fetch(session.channelId);
-      if (!channel || !channel.isTextBased() || !('messages' in channel)) return false;
-      const message = await channel.messages.fetch(session.messageId);
       const payload = definition.render(session, options);
-      await message.edit({
-        content: payload.content ?? '',
-        embeds: payload.embeds ?? [],
-        components: payload.components ?? [],
+      const toJson = (item: any) => (typeof item?.toJSON === 'function' ? item.toJSON() : item);
+      await client.rest.patch(Routes.channelMessage(session.channelId, session.messageId), {
+        body: {
+          content: payload.content ?? '',
+          embeds: (payload.embeds ?? []).map(toJson),
+          components: (payload.components ?? []).map(toJson),
+          allowed_mentions: { parse: [] },
+        },
       });
       return true;
     } catch (error) {
@@ -216,9 +236,13 @@ export class GameService {
     for (const session of [...this.sessions.values()]) {
       if (session.expiresAt > now) continue;
       if (session.status === 'finished') {
+        // Purge : on retire le bouton « Rejouer » devenu inopérant (sauf si une
+        // revanche occupe déjà le message — `refreshMessage` l'ignore alors).
         this.sessions.delete(session.id);
+        await this.refreshMessage(session, { disabled: true });
         continue;
       }
+      const wasLobby = session.status === 'waiting';
       const definition = this.definitions.get(session.game);
       try {
         definition?.onExpire?.(session);
@@ -226,7 +250,12 @@ export class GameService {
         log.warn(`onExpire de ${session.game} en échec`, error);
       }
       // `onExpire` peut avoir clos la partie lui-même (forfait, score…).
-      if (!isFinished(session)) this.finish(session, session.outcome ?? '⌛ Partie expirée par inactivité.');
+      if (!isFinished(session)) {
+        this.finish(
+          session,
+          session.outcome ?? (wasLobby ? '⌛ Invitation expirée — personne n’a répondu à temps.' : '⌛ Partie expirée par inactivité.'),
+        );
+      }
       await this.refreshMessage(session, { disabled: true });
       log.debug(`Partie ${session.game}/${session.id} expirée`);
     }

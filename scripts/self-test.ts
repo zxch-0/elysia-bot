@@ -381,7 +381,7 @@ async function main(): Promise<void> {
   check('motus : normalisation des accents', motus.normalizeGuess('élève') === 'ELEVE');
   check('motus : longueur invalide refusée', motus.normalizeGuess('abc') === null);
 
-  const words = await import('../src/games/data/words');
+  const words = await import('../src/games/content/words');
   check('motus : dictionnaire de mots de 5 lettres valide', words.MOTUS_WORDS.length >= 300 && words.MOTUS_WORDS.every((word) => /^[A-Z]{5}$/.test(word)));
   check('motus : dictionnaire sans doublon', new Set(words.MOTUS_WORDS).size === words.MOTUS_WORDS.length);
   check(
@@ -401,7 +401,7 @@ async function main(): Promise<void> {
     check('pendu : mot juste → victoire', hangman.guessWord(state, state.display, 'u2') && hangman.isWon(state) && state.solvedBy === 'u2');
   }
 
-  const questions = await import('../src/games/data/questions');
+  const questions = await import('../src/games/content/questions');
   check('quiz : au moins 100 questions', questions.QUIZ_QUESTIONS.length >= 100, questions.QUIZ_QUESTIONS.length);
   check(
     'quiz : 4 réponses distinctes par question',
@@ -524,6 +524,48 @@ async function main(): Promise<void> {
     check('quiz : 4 boutons de réponse', (payload.components?.[0] as any)?.components?.length === 4);
     gameService.finish(quizSession, 'test');
     check('quiz : minuteries annulées à la fin', quizSession.timers.size === 0);
+  }
+  {
+    // Revanche : l'ancienne partie est marquée « remplacée », la nouvelle reprend le message.
+    const previous = createTicTacToe({ guildId: 'g1', channelId: 'c1', host, level: 'facile' });
+    previous.messageId = 'm-1';
+    gameService.finish(previous, 'test');
+    const fresh = createTicTacToe({ guildId: 'g1', channelId: 'c1', host, level: 'facile' });
+    gameService.supersede(previous, fresh, 'm-1');
+    check('revanche : ancienne partie remplacée, nouvelle attachée au message', previous.supersededBy === fresh.id && fresh.messageId === 'm-1' && previous.expiresAt <= Date.now() + 60_000);
+    // Le balayage retire les parties terminées expirées et fige leur message (plus de bouton actif).
+    const edits: any[] = [];
+    gameService.attach({
+      rest: { patch: async (route: string, options: any) => { edits.push({ route, body: options.body }); } },
+    } as any);
+    fresh.messageId = 'm-2';
+    gameService.finish(fresh, 'test');
+    fresh.expiresAt = 0;
+    previous.expiresAt = 0;
+    await (gameService as any).sweep();
+    check('balayage : la partie remplacée ne réécrit pas le message de la revanche', !edits.some((edit) => edit.route.endsWith('/messages/m-1')));
+    const frozen = edits.find((edit) => edit.route.endsWith('/messages/m-2'));
+    check('balayage : message figé par PATCH REST sans bouton actif', !!frozen && (frozen.body.components ?? []).every((row: any) => row.components.every((button: any) => button.disabled === true)));
+    check('balayage : parties expirées purgées', gameService.get(fresh.id) === undefined && gameService.get(previous.id) === undefined);
+  }
+  {
+    const { createQuizSession } = await import('../src/games/ui/quiz');
+    const { undo, createGame, move } = await import('../src/games/engine/game2048');
+    const { normalizeGuess } = await import('../src/games/engine/motus');
+    const { BotError } = await import('../src/core/errors');
+    let rejected = false;
+    try {
+      // Aucune question ne peut correspondre : le service doit refuser proprement (BotError).
+      createQuizSession({ guildId: 'g1', channelId: 'c1', host, theme: 'nope' as any, difficulty: 'difficile', count: 3 });
+    } catch (error) {
+      rejected = error instanceof BotError;
+    }
+    check('quiz : réglages sans question → BotError', rejected);
+    const grid = createGame();
+    let played = 0;
+    for (const direction of ['left', 'right', 'up', 'down'] as const) if (move(grid, direction)) { played += 1; break; }
+    check('2048 : annuler un coup décrémente le compteur', played === 1 && undo(grid) && grid.moves === 0 && grid.undosLeft === 2);
+    check('motus : « cœur » (4 caractères) accepté comme COEUR', normalizeGuess('cœur') === 'COEUR' && normalizeGuess('Élève') === 'ELEVE');
   }
   {
     const first = { ...gameService.record({ guildId: 'g1', userId: '42', tag: 'Alice', game: 'motus', result: 'win', points: 12, best: 4, betterIf: 'lower' }) };

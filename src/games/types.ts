@@ -55,6 +55,12 @@ export interface GameSession<S = unknown> {
   expiresAt: number;
   /** Résumé affiché à la fin (victoire, abandon, expiration…). */
   outcome: string | null;
+  /**
+   * Identifiant de la partie qui a remplacé celle-ci sur le même message
+   * (revanche). Une partie remplacée ne rafraîchit plus jamais son message et
+   * ne peut pas être relancée une seconde fois.
+   */
+  supersededBy: string | null;
   timers: Set<NodeJS.Timeout>;
 }
 

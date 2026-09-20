@@ -6,15 +6,18 @@ import { createMemory, flip, hideMismatch, isComplete, nextTurn, soloPoints, typ
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
 import {
   LOBBY_TIMEOUT_MS,
+  canRematch,
   cid,
   deny,
   endRows,
   formatElapsed,
   handleLobbyAction,
   isPlayer,
+  linkRematch,
   lobbyPayload,
   mention,
   quitButton,
+  rematchPair,
   rememberMessage,
   sessionFooterLine,
   updateGame,
@@ -183,21 +186,18 @@ export const memoryGame: GameDefinition<MemorySessionState> = {
     if (await handleLobbyAction(interaction, session, memoryGame, action, beginGame)) return;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La partie est encore en cours.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Seuls les joueurs de cette partie peuvent rejouer. Lancez la vôtre avec `/jeu memory` !');
+      if (!(await canRematch(interaction, session))) return;
+      const { me, other } = rematchPair(session, interaction.user.id);
+      // Duel : nouveau défi à accepter par l'autre joueur ; solo : on repart aussitôt.
       const fresh = createMemorySession({
         guildId: session.guildId,
         channelId: session.channelId,
-        host: session.players[0],
-        opponent: state.duel ? session.players[1] : null,
+        host: me,
+        opponent: state.duel ? (other ?? null) : null,
+        open: state.duel && !other,
         pairs: state.pairs,
       });
-      if (fresh.status === 'waiting') {
-        fresh.status = 'playing';
-        gameService.touch(fresh);
-        beginGame(fresh);
-      }
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

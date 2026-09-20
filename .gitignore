@@ -10,7 +10,7 @@ dist/
 .env.*.local
 
 # Données persistantes du bot (cases, giveaways, panneaux, config)
-data/
+/data/
 assets/panels/*.png
 assets/panels/*.jpg
 assets/panels/*.jpeg

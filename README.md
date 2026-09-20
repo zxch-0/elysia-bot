@@ -47,7 +47,7 @@
 - **Quiz** multijoueur chronométré : 7 thèmes, 3 difficultés, bonus de rapidité, révélation automatique, podium.
 - **Pendu** (9 thèmes, mode coopératif pour tout le salon), **Motus** (mot de 5 lettres, façon Wordle).
 - **Démineur** (premier clic toujours sûr, mode drapeau, chrono), **2048** (annulations limitées), **Blackjack** (jetons virtuels, doubler), **Memory** (solo chrono ou duel).
-- Invitations avec **Accepter / Refuser**, revanche en un clic, abandon, forfait automatique par inactivité.
+- Invitations avec **Accepter / Refuser**, revanche en un clic (nouveau défi entre membres, redémarrage immédiat contre l'IA), abandon, forfait automatique par inactivité.
 - **Statistiques persistantes** par joueur (`/jeu stats`) et **classement** général ou par jeu (`/jeu classement`). Module désactivable via `/config modules`.
 
 ### 🛠️ Configuration & infrastructure
@@ -200,7 +200,7 @@ elysia-bot/
 │   │   ├── utility/             #   help, bot-stats, invite
 │   │   ├── games/               #   jeu (10 mini-jeux + stats + classement)
 │   │   └── owner/               #   owner
-│   ├── games/                   # Mini-jeux : moteurs purs (engine/), rendu Discord (ui/), données (data/)
+│   ├── games/                   # Mini-jeux : moteurs purs (engine/), rendu Discord (ui/), contenu (content/)
 │   ├── modules/                 # Interactions : boutons, menus, modales, confirmations, mini-jeux
 │   ├── services/                # Modération, cases, giveaways, panneaux, logs, jeux, planificateur
 │   ├── ui/                      # Embeds, composants, thème, images
@@ -233,7 +233,8 @@ elysia-bot/
 | `npm start` | Démarrage en production (utilisé par Render) |
 | `npm run typecheck` | Vérification des types sans compiler |
 | `npm run validate` | Diagnostic complet avant déploiement (token, permissions, dossiers) |
-| `npm run self-test` | Auto-test métier hors ligne (durées, base JSON, tirages, panneaux, routes web) |
+| `npm run self-test` | Auto-test métier hors ligne (durées, base JSON, tirages, panneaux, mini-jeux, routes web) |
+| `npm run fuzz:games` | Fuzzing des mini-jeux : des milliers de clics aléatoires (joueurs, intrus, clics tardifs) sur un faux Discord, vérification des limites de l'API et des invariants (`FUZZ_ROUNDS`, `FUZZ_SEED`) |
 | `npm run deploy:commands` | Publie/rafraîchit les slash-commands (`-- --clear` pour tout réinitialiser) |
 | `npm run preview` | Mode démonstration : tableau de bord sans connexion Discord (`DRY_RUN=1`) |
 

@@ -5,7 +5,7 @@ import { buttonRows, type ButtonSpec } from '../../ui/components';
 import { codeBlock, humanizeNumber } from '../../utils/format';
 import { createGame, maxTile, move, renderGrid, tilePoints, undo, type Direction, type G2048State } from '../engine/game2048';
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
-import { cid, deny, endRows, formatElapsed, isPlayer, mention, rememberMessage, sessionFooterLine, updateGame } from './common';
+import { canRematch, cid, deny, endRows, formatElapsed, isPlayer, linkRematch, mention, rememberMessage, sessionFooterLine, updateGame } from './common';
 
 export interface G2048SessionState extends G2048State {
   celebrated: boolean;
@@ -103,10 +103,9 @@ export const game2048: GameDefinition<G2048SessionState> = {
     const { state } = session;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La partie est encore en cours.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Seul le joueur de cette partie peut rejouer. Lancez la vôtre avec `/jeu 2048` !');
+      if (!(await canRematch(interaction, session))) return;
       const fresh = create2048Session({ guildId: session.guildId, channelId: session.channelId, host: session.players[0] });
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

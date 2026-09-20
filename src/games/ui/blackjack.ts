@@ -15,7 +15,7 @@ import {
   type BlackjackState,
 } from '../engine/blackjack';
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
-import { cid, deny, endRows, isPlayer, mention, rememberMessage, sessionFooterLine, updateGame } from './common';
+import { canRematch, cid, deny, endRows, isPlayer, linkRematch, mention, rememberMessage, sessionFooterLine, updateGame } from './common';
 
 export const STARTING_CHIPS = 100;
 const BETS = [5, 10, 25, 50] as const;
@@ -210,10 +210,9 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
     const { state } = session;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La table est encore ouverte.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Cette table appartient à un autre membre. Ouvrez la vôtre avec `/jeu blackjack` !');
+      if (!(await canRematch(interaction, session))) return;
       const fresh = createBlackjackSession({ guildId: session.guildId, channelId: session.channelId, host: session.players[0] });
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

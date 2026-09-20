@@ -108,6 +108,7 @@ export function undo(state: G2048State): boolean {
   const snapshot = state.history.pop() as Snapshot;
   state.grid = snapshot.grid;
   state.score = snapshot.score;
+  state.moves = Math.max(0, state.moves - 1);
   state.undosLeft -= 1;
   state.over = false;
   return true;

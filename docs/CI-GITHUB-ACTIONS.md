@@ -65,7 +65,7 @@ jobs:
 |---|---|
 | `npm run typecheck` | Aucune erreur TypeScript (mode `strict`) |
 | `npm run build` | La compilation en `dist/` doit réussir |
-| `npm run self-test` | 66 vérifications : durées, base JSON, tirages pondérés, panneaux, routes web… |
+| `npm run self-test` | 138 vérifications : durées, base JSON, tirages pondérés, panneaux, mini-jeux, routes web… |
 | Démarrage à blanc | Le serveur web répond bien `{"status":"ok"}` sur `/health` avec `DRY_RUN=1` |
 
 ## Alternative locale (sans GitHub Actions)

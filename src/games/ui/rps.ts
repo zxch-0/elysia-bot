@@ -20,15 +20,18 @@ import {
   AI_PLAYER,
   DIGIT_EMOJI,
   LOBBY_TIMEOUT_MS,
+  canRematch,
   cid,
   deny,
   endRows,
   handleLobbyAction,
   isAi,
   isPlayer,
+  linkRematch,
   lobbyPayload,
   mention,
   quitButton,
+  rematchPair,
   rememberMessage,
   sessionFooterLine,
   updateGame,
@@ -187,23 +190,18 @@ export const rpsGame: GameDefinition<RpsSessionState> = {
     if (await handleLobbyAction(interaction, session, rpsGame, action, beginGame)) return;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'Le match est encore en cours.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Seuls les joueurs de ce match peuvent demander une revanche.');
-      const [first, second] = session.players;
+      if (!(await canRematch(interaction, session))) return;
+      const { me, other } = rematchPair(session, interaction.user.id);
       const fresh = createRpsSession({
         guildId: session.guildId,
         channelId: session.channelId,
-        host: first,
-        opponent: isAi(second) ? null : second,
+        host: me,
+        opponent: isAi(other) ? null : other,
+        open: !other,
         variant: state.variant,
         bestOf: state.bestOf,
       });
-      if (fresh.status === 'waiting') {
-        fresh.status = 'playing';
-        gameService.touch(fresh);
-        beginGame(fresh);
-      }
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

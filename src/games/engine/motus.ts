@@ -1,5 +1,5 @@
 import { pickOne } from '../../utils/random';
-import { MOTUS_WORDS, normalizeWord } from '../data/words';
+import { MOTUS_WORDS, normalizeWord } from '../content/words';
 
 export const MOTUS_LENGTH = 5;
 export const MOTUS_MAX_ATTEMPTS = 6;

@@ -1,5 +1,5 @@
 import { shuffle } from '../../utils/random';
-import { QUIZ_QUESTIONS, QUIZ_THEMES, type QuizQuestion, type QuizTheme } from '../data/questions';
+import { QUIZ_QUESTIONS, QUIZ_THEMES, type QuizQuestion, type QuizTheme } from '../content/questions';
 
 export type QuizDifficulty = 'facile' | 'normal' | 'difficile' | 'mix';
 

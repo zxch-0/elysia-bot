@@ -16,7 +16,7 @@ import {
   type MotusState,
 } from '../engine/motus';
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
-import { cid, deny, endRows, formatElapsed, isPlayer, mention, quitButton, rememberMessage, sessionFooterLine, updateGame } from './common';
+import { canRematch, cid, deny, endRows, formatElapsed, isPlayer, linkRematch, mention, quitButton, rememberMessage, sessionFooterLine, updateGame } from './common';
 
 export interface MotusSessionState extends MotusState {
   lastMessage: string | null;
@@ -128,10 +128,9 @@ export const motusGame: GameDefinition<MotusSessionState> = {
     const { state } = session;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La partie est encore en cours.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Seul le joueur de cette partie peut relancer un mot. Lancez la vôtre avec `/jeu motus` !');
+      if (!(await canRematch(interaction, session))) return;
       const fresh = createMotusSession({ guildId: session.guildId, channelId: session.channelId, host: session.players[0] });
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }
@@ -157,7 +156,8 @@ export const motusGame: GameDefinition<MotusSessionState> = {
               .setCustomId('mot')
               .setLabel('Votre mot de 5 lettres')
               .setStyle(TextInputStyle.Short)
-              .setMinLength(MOTUS_LENGTH)
+              // « cœur » fait 4 caractères mais 5 lettres une fois normalisé (COEUR).
+              .setMinLength(MOTUS_LENGTH - 1)
               .setMaxLength(12)
               .setRequired(true)
               .setPlaceholder('Ex. : PIANO'),

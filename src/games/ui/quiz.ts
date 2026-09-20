@@ -1,3 +1,4 @@
+import { BotError } from '../../core/errors';
 import type { ComponentMessage } from '../../core/types';
 import { gameService } from '../../services/gameService';
 import { baseEmbed, THEME } from '../../ui/embeds';
@@ -14,7 +15,7 @@ import {
   type QuizTheme,
 } from '../engine/quiz';
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
-import { MEDALS, cid, deny, endRows, mention, rememberMessage, whisper, updateGame } from './common';
+import { MEDALS, canRematch, cid, deny, endRows, linkRematch, mention, rememberMessage, whisper, updateGame } from './common';
 
 export interface QuizSessionState extends QuizState {
   theme: QuizTheme | 'mix';
@@ -24,14 +25,24 @@ export interface QuizSessionState extends QuizState {
   deadline: number;
   /** Instant d'affichage de la prochaine question (phase de révélation). */
   nextAt: number;
+  /** Un rafraîchissement du compteur de réponses est déjà programmé. */
+  refreshPending: boolean;
 }
 
 const LETTERS = ['🇦', '🇧', '🇨', '🇩'] as const;
 const REVEAL_MS = 6_000;
+/** Délai de regroupement des rafraîchissements du compteur de réponses (anti rate-limit). */
+const ANSWER_REFRESH_MS = 2_000;
 const RULES = 'Tout le monde peut répondre : bonne réponse = 10 points (+ bonus de rapidité, + difficulté).';
 
 function difficultyStars(level: 1 | 2 | 3): string {
   return '⭐'.repeat(level);
+}
+
+/** Liste de noms bornée (« A, B, C et 12 autres ») pour rester sous les limites d'un embed. */
+function nameList(items: string[], limit = 12): string {
+  if (items.length <= limit) return items.join(', ');
+  return `${items.slice(0, limit).join(', ')} et ${items.length - limit} autre(s)`;
 }
 
 function scoreboard(state: QuizSessionState, limit = 5): string {
@@ -79,9 +90,9 @@ function render(session: GameSession<QuizSessionState>, options: { disabled?: bo
         '',
         correctLine,
         winners.length
-          ? `🎯 ${winners.map((entry) => `${mention(entry.userId)} (+${entry.points})`).join(', ')}`
+          ? `🎯 ${nameList(winners.map((entry) => `${mention(entry.userId)} (+${entry.points})`))}`
           : '😶 Personne n’a trouvé la bonne réponse.',
-        losers.length ? `❌ ${losers.map((entry) => mention(entry.userId)).join(', ')}` : '',
+        losers.length ? `❌ ${nameList(losers.map((entry) => mention(entry.userId)))}` : '',
         '',
         `🏆 **Classement**\n${scoreboard(state)}`,
         '',
@@ -154,13 +165,31 @@ function finishQuiz(session: GameSession<QuizSessionState>, reason: string): voi
   const { state } = session;
   state.phase = 'ended';
   const ranking = leaderboard(state);
-  const winnerLine = ranking.length
-    ? ranking.length >= 2 && ranking[0].points === ranking[1].points
-      ? `🤝 Égalité en tête entre ${ranking.filter((entry) => entry.points === ranking[0].points).map((entry) => mention(entry.userId)).join(' et ')} !`
-      : `🏆 ${mention(ranking[0].userId)} remporte le quiz avec **${ranking[0].points}** points !`
-    : '';
+  const top = ranking[0]?.points ?? 0;
+  let winnerLine = '';
+  if (ranking.length > 0 && top === 0) {
+    winnerLine = '😶 Personne n’a marqué le moindre point !';
+  } else if (ranking.length >= 2 && ranking[1].points === top) {
+    const tied = ranking.filter((entry) => entry.points === top).map((entry) => mention(entry.userId));
+    winnerLine = `🤝 Égalité en tête (${top} pts) entre ${nameList(tied, 8)} !`;
+  } else if (ranking.length > 0) {
+    winnerLine = `🏆 ${mention(ranking[0].userId)} remporte le quiz avec **${top}** points !`;
+  }
   gameService.finish(session, [reason, winnerLine].filter(Boolean).join('\n'));
   recordResults(session);
+}
+
+/** Met à jour le compteur « N réponse(s) » du message, au plus une fois toutes les 2 s. */
+function scheduleAnswerRefresh(session: GameSession<QuizSessionState>): void {
+  const { state } = session;
+  if (state.refreshPending) return;
+  state.refreshPending = true;
+  const index = state.index;
+  gameService.schedule(session, ANSWER_REFRESH_MS, async () => {
+    state.refreshPending = false;
+    if (session.status !== 'playing' || state.phase !== 'question' || state.index !== index) return;
+    await gameService.refreshMessage(session);
+  });
 }
 
 function askQuestion(session: GameSession<QuizSessionState>): void {
@@ -168,6 +197,7 @@ function askQuestion(session: GameSession<QuizSessionState>): void {
   state.phase = 'question';
   state.answers = {};
   state.lastReveal = [];
+  state.refreshPending = false;
   state.askedAt = Date.now();
   state.deadline = state.askedAt + state.questionMs;
   gameService.touch(session);
@@ -210,8 +240,10 @@ export interface QuizParams {
 export function createQuizSession(params: QuizParams): GameSession<QuizSessionState> {
   const count = Math.max(3, Math.min(20, params.count ?? 5));
   const questionMs = Math.max(10, Math.min(60, params.secondsPerQuestion ?? 20)) * 1_000;
+  const questions = pickQuestions(count, params.theme ?? 'mix', params.difficulty ?? 'mix');
+  if (questions.length === 0) throw new BotError('Aucune question ne correspond à ces réglages. Essayez un autre thème ou la difficulté « mixte ».');
   const state: QuizSessionState = {
-    questions: pickQuestions(count, params.theme ?? 'mix', params.difficulty ?? 'mix'),
+    questions,
     index: 0,
     questionMs,
     askedAt: Date.now(),
@@ -224,6 +256,7 @@ export function createQuizSession(params: QuizParams): GameSession<QuizSessionSt
     requested: count,
     deadline: Date.now() + questionMs,
     nextAt: 0,
+    refreshPending: false,
   };
   const session = gameService.createSession<QuizSessionState>({
     game: 'quiz',
@@ -251,7 +284,7 @@ export const quizGame: GameDefinition<QuizSessionState> = {
     const isHost = interaction.user.id === session.hostId;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'Le quiz est encore en cours.');
+      if (!(await canRematch(interaction, session, false))) return;
       if (!isHost) return deny(interaction, 'Seul l’hôte peut relancer ce quiz. Lancez le vôtre avec `/jeu quiz` !');
       const fresh = createQuizSession({
         guildId: session.guildId,
@@ -262,7 +295,7 @@ export const quizGame: GameDefinition<QuizSessionState> = {
         count: state.requested,
         secondsPerQuestion: state.questionMs / 1_000,
       });
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }
@@ -293,12 +326,19 @@ export const quizGame: GameDefinition<QuizSessionState> = {
       if (interaction.user.bot) return deny(interaction, 'Les bots ne participent pas au quiz.');
       const questionIndex = Number.parseInt(rawIndex ?? '', 10);
       const choice = Number.parseInt(rawChoice ?? '', 10);
-      if (state.phase !== 'question' || questionIndex !== state.index) return deny(interaction, 'Trop tard, cette question est close !');
+      if (state.phase !== 'question' || questionIndex !== state.index) {
+        // Le message affiché est en retard (rafraîchissement raté ou clic tardif) :
+        // on le remet à jour avant d'expliquer le refus.
+        await updateGame(interaction, render(session));
+        await deny(interaction, 'Trop tard, cette question est close !', '⏱️ Question close');
+        return;
+      }
       if (!Number.isInteger(choice) || choice < 0 || choice > 3) return deny(interaction, 'Réponse invalide.');
 
       const previous = state.answers[interaction.user.id];
       state.answers[interaction.user.id] = { choice, elapsedMs: Math.max(0, Date.now() - state.askedAt) };
       state.scores[interaction.user.id] ??= { points: 0, correct: 0, name: interaction.user.username };
+      if (!previous) scheduleAnswerRefresh(session);
       const question = currentQuestion(state);
       await whisper(
         interaction,

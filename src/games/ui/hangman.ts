@@ -19,7 +19,7 @@ import {
   type HangmanTheme,
 } from '../engine/hangman';
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
-import { cid, deny, endRows, isPlayer, mention, quitButton, rememberMessage, sessionFooterLine, updateGame } from './common';
+import { canRematch, cid, deny, endRows, isPlayer, linkRematch, mention, quitButton, rememberMessage, sessionFooterLine, updateGame } from './common';
 
 export interface HangmanSessionState extends HangmanState {
   mode: 'solo' | 'tous';
@@ -175,16 +175,16 @@ export const hangmanGame: GameDefinition<HangmanSessionState> = {
     const { state } = session;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La partie est encore en cours.');
-      if (!canPlay(session, interaction.user.id)) return deny(interaction, 'Seul le joueur de cette partie peut relancer un mot.');
+      // Mode « tous » : n'importe quel membre peut relancer un mot et devient l'hôte.
+      if (!(await canRematch(interaction, session, state.mode === 'solo'))) return;
       const fresh = createHangmanSession({
         guildId: session.guildId,
         channelId: session.channelId,
-        host: session.players[0],
+        host: state.mode === 'tous' ? { id: interaction.user.id, name: interaction.user.username } : session.players[0],
         theme: state.requestedTheme,
         mode: state.mode,
       });
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

@@ -22,15 +22,18 @@ import {
   AI_PLAYER,
   DIGIT_EMOJI,
   LOBBY_TIMEOUT_MS,
+  canRematch,
   cid,
   deny,
   endRows,
   handleLobbyAction,
   isAi,
   isPlayer,
+  linkRematch,
   lobbyPayload,
   mention,
   quitButton,
+  rematchPair,
   rememberMessage,
   sessionFooterLine,
   updateGame,
@@ -133,7 +136,7 @@ function renderGrid(state: ConnectFourState): string {
 function render(session: GameSession<ConnectFourState>, options: { disabled?: boolean } = {}): ComponentMessage {
   const { state } = session;
   if (!state.started) {
-    return lobbyPayload(session, connectFourGame, { rules: RULES, details: ['🔴 joue en premier, 🟡 en second — un tirage décide qui commence.'] });
+    return lobbyPayload(session, connectFourGame, { rules: RULES, details: ['L’hôte joue 🔴, l’adversaire 🟡 — un tirage au sort décide qui commence.'] });
   }
 
   const [first, second] = session.players;
@@ -236,23 +239,19 @@ export const connectFourGame: GameDefinition<ConnectFourState> = {
     if (await handleLobbyAction(interaction, session, connectFourGame, action, beginGame)) return;
 
     if (action === 'rematch') {
-      if (session.status !== 'finished') return deny(interaction, 'La partie est encore en cours.');
-      if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Seuls les joueurs de cette partie peuvent demander une revanche.');
-      const [first, second] = session.players;
+      if (!(await canRematch(interaction, session))) return;
+      const { me, other } = rematchPair(session, interaction.user.id);
+      const vsAi = isAi(other);
       const fresh = createConnectFour({
         guildId: session.guildId,
         channelId: session.channelId,
-        host: first,
-        opponent: isAi(second) ? null : second,
+        host: me,
+        opponent: vsAi ? null : other,
+        open: !other,
         level: state.level ?? undefined,
-        starter: state.starter === 0 ? 1 : 0,
+        starter: vsAi ? (state.starter === 0 ? 1 : 0) : undefined,
       });
-      if (fresh.status === 'waiting') {
-        fresh.status = 'playing';
-        gameService.touch(fresh);
-        beginGame(fresh);
-      }
-      fresh.messageId = interaction.message?.id ?? null;
+      linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
       return;
     }

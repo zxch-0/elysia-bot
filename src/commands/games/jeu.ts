@@ -2,8 +2,8 @@ import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.j
 import { BotError } from '../../core/errors';
 import type { Command, CommandContext } from '../../core/types';
 import { GAME_DEFINITIONS, registerGames } from '../../games/registry';
-import { HANGMAN_THEMES } from '../../games/data/words';
-import { QUIZ_THEMES } from '../../games/data/questions';
+import { HANGMAN_THEMES } from '../../games/content/words';
+import { QUIZ_THEMES } from '../../games/content/questions';
 import type { GameId, GamePlayer, GameSession } from '../../games/types';
 import { MEDALS, toPlayer } from '../../games/ui/common';
 import { createBlackjackSession } from '../../games/ui/blackjack';
@@ -59,6 +59,7 @@ function resolveOpponent(interaction: ChatInputCommandInteraction): { opponent: 
   if (target) {
     if (target.bot) throw new BotError('Les bots ne peuvent pas être défiés — laissez le champ vide pour affronter l’IA.');
     if (target.id === interaction.user.id) throw new BotError('Vous ne pouvez pas vous défier vous-même !');
+    if (!interaction.options.getMember('adversaire')) throw new BotError('Ce membre ne fait pas partie du serveur : il ne pourrait pas répondre au défi.');
     return { opponent: toPlayer(target), open: false };
   }
   return { opponent: null, open };
@@ -355,7 +356,7 @@ const command: Command = {
     const opponent = session.status === 'waiting' ? session.players[1] : undefined;
     try {
       const response = await interaction.reply({
-        content: opponent ? `<@${opponent.id}>` : undefined,
+        content: opponent ? `<@${opponent.id}>` : payload.content || undefined,
         embeds: payload.embeds ?? [],
         components: payload.components ?? [],
         allowedMentions: opponent ? { users: [opponent.id] } : { parse: [] },

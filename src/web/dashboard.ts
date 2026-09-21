@@ -137,7 +137,7 @@ export function renderDashboard(): string {
       const pill = document.getElementById('status');
       const offline = !data.ready;
       pill.className = 'status-pill' + (offline ? ' off' : '');
-      pill.innerHTML = '<span class="dot"></span><span>' + (offline ? 'Hors ligne (mode maintenance)' : 'En ligne • ' + esc(data.user ? data.user.tag : 'Elysia')) + '</span>';
+      pill.innerHTML = '<span class="dot"></span><span>' + (offline ? 'Hors ligne • connexion à Discord en cours' : 'En ligne • ' + esc(data.user ? data.user.tag : 'Elysia')) + '</span>';
 
       setText('latency', (data.latencyMs ?? 0) + '<small> ms</small>');
       setText('uptime', fmt(data.uptimeMs || 0));

@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   // 1. Base de données JSON persistante
   await db.init();
 
-  // 2. Client Discord + commandes + modules + événements
+  // 2. Client Discord + commandes + modules
   client = createClient();
   await loadCommands(client);
   registerInteractionModules(client);
@@ -83,22 +83,35 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 4. Publication automatique des commandes (globale, ou instantanée si DEV_GUILD_ID)
-  try {
-    await publishCommands(client);
-  } catch (error) {
-    log.error('Publication des commandes impossible (le bot démarre quand même)', error as Error);
-    log.warn('➜ Vérifiez DISCORD_TOKEN, ainsi que CLIENT_ID (l’Application ID de la MÊME application que le token).');
-  }
-
-  // 5. Connexion à Discord
+  // 4. Événements Discord : on branche les écouteurs, et on publie les commandes
+  //    UNE FOIS connecté (ClientReady). Publier avant le login est peu fiable :
+  //    • CLIENT_ID absent → échec silencieux (client.user n'existe pas encore)
+  //    • Discord renvoie parfois des 401 aléatoires tant que la session n'est pas établie
+  //    • Les commandes sont alors « inconnues » côté utilisateur.
+  let publishAttempted = false;
   registerEvents(client, () => {
     // Une fois connecté : planificateur + référence mise à jour pour le tableau de bord.
     scheduler = new SchedulerService(client!);
     scheduler.start();
     (client as unknown as { scheduler?: SchedulerService }).scheduler = scheduler;
+
+    // Publication automatique des slash-commands (idempotente : relancer ne crée pas de doublons).
+    if (!publishAttempted) {
+      publishAttempted = true;
+      publishCommands(client!)
+        .then((count) => {
+          log.success(`✅ ${count} slash-commands publiées / synchronisées avec Discord.`);
+        })
+        .catch((error) => {
+          log.error('Publication des commandes impossible', error as Error);
+          log.error('➜ Vérifiez DISCORD_TOKEN et CLIENT_ID (Application ID de la MÊME application que le token).');
+          log.error('➜ Vérifiez aussi que le bot a été invité avec le scope « applications.commands ».');
+          log.error('➜ Le bot reste en ligne, mais les commandes apparaîtront « inconnues » tant que ce problème n’est pas résolu.');
+        });
+    }
   });
 
+  // 5. Connexion à Discord
   await client.login(config.token);
 }
 

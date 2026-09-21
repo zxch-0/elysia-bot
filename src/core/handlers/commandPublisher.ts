@@ -7,11 +7,28 @@ const log = logger.child('publisher');
 
 async function resolveApplicationId(client: ElysiaClient): Promise<string> {
   const config = loadConfig();
-  if (config.clientId) return config.clientId;
-  if (client.user?.id) return client.user.id;
-  const application = client.application ?? undefined;
-  if (!application) throw new Error('CLIENT_ID introuvable : renseignez-le dans .env (Developer Portal → General Information).');
-  return application.id;
+
+  // Après ClientReady, client.application est garanti d'être renseigné.
+  const appFromClient = client.user?.id ?? client.application?.id ?? null;
+
+  if (config.clientId) {
+    // Vérification de cohérence : si CLIENT_ID ne correspond pas au token utilisé,
+    // les commandes seraient publiées sur la MAUVAISE application → « commande inconnue ».
+    if (appFromClient && config.clientId !== appFromClient) {
+      throw new Error(
+        `CLIENT_ID (${config.clientId}) ne correspond PAS à l'ID du bot connecté (${appFromClient}). ` +
+          "CLÉS INCOHÉRENTES : les commandes seraient publiées sur une autre application et Discord répondrait « commande inconnue ». " +
+          "Corrigez CLIENT_ID : il doit s'agir de l'Application ID de la MÊME application que DISCORD_TOKEN.",
+      );
+    }
+    return config.clientId;
+  }
+
+  if (appFromClient) return appFromClient;
+  throw new Error(
+    'CLIENT_ID introuvable : renseignez-le dans .env (Developer Portal → General Information → Application ID). ' +
+      'Sans lui, les slash-commands ne peuvent pas être publiées, et les utilisateurs verront « Cette commande n’est pas disponible ».',
+  );
 }
 
 /**

@@ -32,7 +32,7 @@ L'URL en cause se termine par `guilds/<id>/commands` : c'est la publication sur 
 2. **Le bot a été invité sans le scope `applications.commands`** → réinvitez-le via *OAuth2 → URL Generator* avec les scopes `bot` **et** `applications.commands`.
 3. **`CLIENT_ID` ne correspond pas à l'application du token** → Developer Portal → *General Information* → *Application ID*.
 
-> La publication **globale** continue malgré cet échec (le bot publie désormais en global même si le serveur de développement est inaccessible). Seule la publication instantanée sur ce serveur est perdue.
+> Le bot **bascule alors en publication globale** (il ne reste jamais sans commandes) et le signale dans les logs. Seule la publication instantanée sur ce serveur est perdue. Vérifiez ensuite `/owner commandes` : la portée utilisée y est affichée.
 
 ### `Cannot find module 'discord.js'`
 Dépendances non installées : `npm install` (ou `npm ci`).
@@ -63,6 +63,9 @@ npm run build && npm start   # compilation puis exécution
 | `403 Missing Access` sur `guilds/<id>/commands` | Bot absent du serveur `DEV_GUILD_ID`, scope `applications.commands` manquant, ou `CLIENT_ID` erroné (voir *Démarrage & connexion*) |
 | Commande renommée/supprimée | `/owner recharger` ou `npm run deploy:commands -- --clear` |
 | `CLIENT_ID` erroné | Developer Portal → General Information → Application ID |
+| **Chaque commande apparaît en double** | Publier la même commande à la fois en global et sur un serveur la fait afficher **deux fois** (section « Commandes de serveur » + section globale). Passez `COMMANDS_SCOPE=auto` (défaut : une seule portée) puis `/owner commandes` — les doublons sont supprimés et l'autre portée nettoyée. `Ctrl+R` sur Discord pour rafraîchir |
+| Commandes présentes seulement sur le serveur de test | `COMMANDS_SCOPE=guild` (ou `auto` avec `DEV_GUILD_ID` et un seul serveur) ne publie que sur ce serveur : passez à `auto`/`global` pour tous les serveurs |
+| Commandes fantômes après un renommage | `npm run deploy:commands -- --clear`, puis redémarrez le bot |
 
 ---
 
@@ -126,6 +129,28 @@ curl -s https://VOTRE-SERVICE.onrender.com/health
 
 ### Tester un déploiement sans risque
 Ajoutez `DRY_RUN=1` aux variables d'environnement : le serveur web, le tableau de bord et les données de démonstration démarrent **sans connexion Discord**. Retirez la variable pour passer en production.
+
+### Explorer le site intégré (5 pages + API JSON)
+```bash
+# Pages HTML (aucune ressource externe, affichables dans une iframe)
+open https://VOTRE-SERVICE.onrender.com/            # tableau de bord
+open https://VOTRE-SERVICE.onrender.com/commandes   # catalogue des 52 commandes
+open https://VOTRE-SERVICE.onrender.com/jeux        # classements des mini-jeux
+open https://VOTRE-SERVICE.onrender.com/communaute  # niveaux, sondages, suggestions…
+open https://VOTRE-SERVICE.onrender.com/donnees     # cases, notes du staff, journaux
+
+# API JSON
+curl -s https://VOTRE-SERVICE.onrender.com/api | head -40
+curl -s "https://VOTRE-SERVICE.onrender.com/api/leaderboard?limit=5" | head -40
+curl -s -H "x-dashboard-token: VOTRE_JETON" https://VOTRE-SERVICE.onrender.com/api/logs
+```
+
+| Symptôme | Solution |
+|---|---|
+| `/api/logs`, `/api/cases`, `/api/notes` ou `/api/reminders` répond `401 Jeton du tableau de bord requis` | Comportement voulu dès que `DASHBOARD_TOKEN` est défini : ajoutez `-H "x-dashboard-token: VOTRE_JETON"` (ou `?token=…`). Pour libérer l'accès, videz la variable |
+| La page `/donnees` reste vide avec un message « jeton » | Cliquez sur **🔑 Jeton du tableau de bord**, collez votre jeton : il est mémorisé dans le navigateur puis envoyé à chaque requête |
+| Les pages s'affichent mais tous les compteurs sont à zéro | Vérifiez `/api/stats` : `ready:false` = bot déconnecté de Discord ; `guilds: []` = le bot n'est sur aucun serveur |
+| Une page reste sur « Chargement… » | L'API est bloquée par un proxy ou le service redémarre : ouvrez la console du navigateur, puis testez `curl -s https://VOTRE-SERVICE.onrender.com/api/stats` |
 
 ---
 

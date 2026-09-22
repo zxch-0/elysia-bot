@@ -34,6 +34,38 @@ function timestamp(): string {
   );
 }
 
+export interface LogEntry {
+  /** Horodatage (ms). */
+  time: number;
+  /** Heure locale `HH:MM:SS.mmm`. */
+  clock: string;
+  level: Level;
+  scope: string;
+  message: string;
+  /** Métadonnées sérialisées (tronquées) — vide si aucune. */
+  meta: string;
+}
+
+/**
+ * Tampon circulaire des derniers messages : alimente la page « Données » du
+ * site intégré (`GET /api/logs`) sans écrire de fichier sur le disque.
+ */
+const RING_MAX = 400;
+const RING: LogEntry[] = [];
+
+/** Derniers messages du journal (du plus ancien au plus récent). */
+export function recentLogs(limit = 100): LogEntry[] {
+  const size = Math.max(1, Math.min(Math.trunc(limit), RING_MAX));
+  return RING.slice(-size);
+}
+
+/** Vide le tampon de journal (utilisé par les tests). */
+export function clearRecentLogs(): number {
+  const size = RING.length;
+  RING.length = 0;
+  return size;
+}
+
 export interface Logger {
   debug(message: string, ...meta: unknown[]): void;
   info(message: string, ...meta: unknown[]): void;
@@ -80,6 +112,15 @@ function write(scope: string, level: Level, message: string | Error, meta: unkno
 
   const isError = message instanceof Error;
   const text = isError ? `${message.message}` : message;
+  RING.push({
+    time: Date.now(),
+    clock: timestamp(),
+    level,
+    scope,
+    message: text.slice(0, 500),
+    meta: meta.length ? safeStringify([...meta.map(compactError), ...(isError ? [serializeError(message)] : [])]).slice(0, 400) : '',
+  });
+  if (RING.length > RING_MAX) RING.splice(0, RING.length - RING_MAX);
   // Les erreurs en métadonnée sont compactées : sans cela, `JSON.stringify`
   // produit `[{}]` (Error) ou un dump de plusieurs Ko (DiscordAPIError).
   const payload = [...meta.map(compactError), ...(isError ? [serializeError(message)] : [])];

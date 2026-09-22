@@ -15,6 +15,9 @@ import path from 'node:path';
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), 'elysia-test-'));
 process.env.DRY_RUN = '1';
 process.env.LOG_LEVEL = 'error';
+// Le site intégré protège /donnees et les routes sensibles quand ce jeton est
+// défini : on l'active ici pour vérifier réellement le contrôle d'accès.
+process.env.DASHBOARD_TOKEN = 'jeton-de-test';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -238,12 +241,25 @@ async function main(): Promise<void> {
   const client = createClient();
   await loadCommands(client);
   registerInteractionModules(client);
-  check('au moins 20 commandes chargées', client.commands.size >= 20, client.commands.size);
+  check('au moins 50 commandes chargées', client.commands.size >= 50, client.commands.size);
   check('commande /giveaway présente', client.commands.has('giveaway'));
   check('commande /rolepanel présente', client.commands.has('rolepanel'));
   check('commande /embed présente', client.commands.has('embed'));
   check('commandes uniques (noms sans doublon)', new Set([...client.commands.keys()]).size === client.commands.size);
-  check('7 modules d’interaction enregistrés', client.modules.size === 7, client.modules.size);
+  check('13 modules d’interaction enregistrés', client.modules.size === 13, client.modules.size);
+  check('modules communautaires (poll, sug, cd, duel, rem) enregistrés', ['poll', 'sug', 'cd', 'duel', 'rem'].every((prefix) => client.modules.has(prefix)));
+  check(
+    'nouvelles commandes présentes',
+    ['profil', 'avatar', 'serveur', 'roles', 'emojis', 'membres', 'invitations', 'snipe', 'rappel', 'heure', 'meteo', 'calculer', 'convertir', 'motdepasse', 'code'].every(
+      (name) => client.commands.has(name),
+    ),
+  );
+  check(
+    'commandes communauté & divertissement présentes',
+    ['sondage', 'suggestion', 'anniversaire', 'compte-a-rebours', 'niveau', 'tirage', 'des', '8ball', 'citation', 'blague', 'duel', 'pile-ou-face', 'note', 'bannissements', 'vocal'].every(
+      (name) => client.commands.has(name),
+    ),
+  );
   check('commande /jeu présente', client.commands.has('jeu'));
   check('module de mini-jeux (préfixe g) enregistré', client.modules.has('g'));
   check('cooldown bloqué au second appel immédiat', (() => {
@@ -258,6 +274,35 @@ async function main(): Promise<void> {
 
   const helpJson = buildHelpEmbed(client, 0).toJSON();
   check('aide sans dépassement de champ (>1024)', (helpJson.fields ?? []).every((field) => field.value.length <= 1024));
+
+  // ── Publication des commandes : anti-doublons ────────────────────────────
+  const publisher = await import('../src/core/handlers/commandPublisher');
+  check(
+    'publication : auto → serveur si DEV_GUILD_ID et un seul serveur',
+    publisher.resolveCommandsScope({ commandsScope: 'auto', devGuildId: '123', guildCount: 1 }) === 'guild',
+  );
+  check(
+    'publication : auto → global si plusieurs serveurs (aucun serveur privé)',
+    publisher.resolveCommandsScope({ commandsScope: 'auto', devGuildId: '123', guildCount: 3 }) === 'global',
+  );
+  check('publication : auto → global sans DEV_GUILD_ID', publisher.resolveCommandsScope({ commandsScope: 'auto' }) === 'global');
+  check(
+    'publication : demande explicite respectée',
+    publisher.resolveCommandsScope({ commandsScope: 'guild', devGuildId: '123', guildCount: 9 }) === 'guild' &&
+      publisher.resolveCommandsScope({ commandsScope: 'global', devGuildId: '123', guildCount: 1 }) === 'global',
+  );
+  check(
+    'publication : « both » ne conserve qu’une portée (anti-doublons)',
+    publisher.resolveCommandsScope({ commandsScope: 'both', devGuildId: '123', guildCount: 1 }) === 'global',
+  );
+
+  const fakeCommands = [
+    { data: { name: 'alpha', toJSON: () => ({ name: 'alpha' }) } },
+    { data: { name: 'beta', toJSON: () => ({ name: 'beta' }) } },
+    { data: { name: 'alpha', toJSON: () => ({ name: 'alpha' }) } },
+  ];
+  const deduped = publisher.dedupeCommandBody(fakeCommands);
+  check('publication : catalogue dédoublonné par nom', deduped.body.length === 2 && deduped.duplicates.join(',') === 'alpha');
 
   // ── Régressions (bugs corrigés) ───────────────────────────────────────────
   section('🐛 Régressions corrigées');
@@ -581,25 +626,466 @@ async function main(): Promise<void> {
     check('rang du joueur', gameService.rank('g1', '42') === 2 && gameService.rank('g1', 'inconnu') === null);
   }
 
-  // ── Serveur web (routes) ──────────────────────────────────────────────────
+  // ── Utilitaires : calcul, conversions, dés, encodage ──────────────────────
+  section('🧮 Calcul, conversions, dés et encodage');
+  const { evaluateExpression, normalizeExpression, formatNumber } = await import('../src/utils/mathEval');
+  check('calcul : priorité des opérateurs', evaluateExpression('2 + 3 * 4') === 14);
+  check('calcul : parenthèses', evaluateExpression('100 / (2 + 3)') === 20);
+  check('calcul : puissance associative à droite', evaluateExpression('2^3^2') === 512);
+  check('calcul : factorielle', evaluateExpression('5!') === 120);
+  check('calcul : fonctions scientifiques', evaluateExpression('sqrt(144) + log(1000)') === 15);
+  check('calcul : pourcentage à la française', evaluateExpression('15% de 240') === 36);
+  check('calcul : constante pi', Math.abs(evaluateExpression('sin(pi/2)') - 1) < 1e-9);
+  check('calcul : comparateur', evaluateExpression('3 > 2') === 1 && evaluateExpression('2 >= 3') === 0);
+  check('calcul : multiplication implicite', evaluateExpression('2(3+4)') === 14 && evaluateExpression('max(1,2)') === 2);
+  check('calcul : pourcentage isolé', evaluateExpression('50%') === 0.5);
+  check('calcul : modulo conservé', evaluateExpression('10 % 3') === 1);
+  check('calcul : virgule décimale acceptée', normalizeExpression('1,5 + 1') === '1.5 + 1' && evaluateExpression('1,5 + 1') === 2.5);
+  {
+    let zeroDivision = false;
+    try {
+      evaluateExpression('1/0');
+    } catch {
+      zeroDivision = true;
+    }
+    check('calcul : division par zéro refusée', zeroDivision);
+  }
+  {
+    let unknownFunction = false;
+    try {
+      evaluateExpression('bidule(3)');
+    } catch {
+      unknownFunction = true;
+    }
+    check('calcul : fonction inconnue refusée', unknownFunction);
+  }
+  check('formatNumber : arrondi propre', formatNumber(1 / 3).startsWith('0,333'), formatNumber(1 / 3));
+
+  const { convertUnits, findUnit, UNITS } = await import('../src/utils/units');
+  check('conversion : 42 km = 26,1 miles', Math.abs(convertUnits(42, 'km', 'mi').result - 26.0976) < 0.01);
+  check('conversion : 0 °C = 32 °F', Math.abs(convertUnits(0, 'c', 'f').result - 32) < 1e-9);
+  check('conversion : 100 °C = 212 °F', Math.abs(convertUnits(100, 'c', 'f').result - 212) < 1e-9);
+  check('conversion : 68 °F = 20 °C', Math.abs(convertUnits(68, 'f', 'c').result - 20) < 1e-9);
+  check('conversion : 0 K = -273,15 °C', Math.abs(convertUnits(0, 'k', 'c').result + 273.15) < 1e-9);
+  check('conversion : 1 Go = 1024 Mo', Math.abs(convertUnits(1, 'go', 'mo').result - 1024) < 1e-9);
+  check('conversion : 1 livre = 453,592 g', Math.abs(convertUnits(1, 'lb', 'g').result - 453.59237) < 1e-6);
+  check('conversion : 1 h = 3600 s', convertUnits(1, 'h', 's').result === 3600);
+  {
+    let mismatch = false;
+    try {
+      convertUnits(1, 'km', 'kg');
+    } catch {
+      mismatch = true;
+    }
+    check('conversion : catégories incompatibles refusées', mismatch);
+  }
+  check('unités : 45 unités référencées', UNITS.length >= 45, UNITS.length);
+  check('unités : symbole reconnu', findUnit('°C')?.id === 'c' || findUnit('c')?.id === 'c');
+
+  const { parseDiceNotation, rollDice, rollGrade, flipCoins, flipCoin } = await import('../src/utils/dice');
+  check('dés : « 2d6+3 » → 2 dés, modificateur 3', parseDiceNotation('2d6+3').groups[0].count === 2 && parseDiceNotation('2d6+3').modifier === 3);
+  check('dés : « d20 » → 1 dé à 20 faces', parseDiceNotation('d20').groups[0].count === 1 && parseDiceNotation('d20').groups[0].faces === 20);
+  check('dés : multi-groupes « 1d4+2d6-1 »', parseDiceNotation('1d4+2d6-1').groups.length === 2 && parseDiceNotation('1d4+2d6-1').modifier === -1);
+  {
+    let inRange = true;
+    let sawVariety = new Set<number>();
+    for (let round = 0; round < 200; round += 1) {
+      const roll = rollDice('3d6+2');
+      if (roll.total < 5 || roll.total > 20) inRange = false;
+      if (roll.rolls[0].length !== 3) inRange = false;
+      sawVariety.add(roll.total);
+    }
+    check('dés : bornes respectées (3d6+2 ∈ [5, 20])', inRange);
+    check('dés : résultats variés sur 200 lancers', sawVariety.size > 5, sawVariety.size);
+  }
+  {
+    let rejected = false;
+    try {
+      parseDiceNotation('nimporte quoi');
+    } catch {
+      rejected = true;
+    }
+    check('dés : notation invalide refusée', rejected);
+  }
+  check('dés : appréciation cohérente', rollGrade({ notation: '1d6', groups: [], modifier: 0, rolls: [[6]], total: 6, min: 1, max: 6 }).emoji === '🌟');
+  {
+    const flips = flipCoins(20);
+    check('pièce : 20 lancers binaires', flips.length === 20 && flips.every((side) => side === 'pile' || side === 'face'));
+    check('pièce : lancer unique valide', ['pile', 'face'].includes(flipCoin()));
+  }
+
+  const codec = await import('../src/utils/codec');
+  check('encodage : Base64 aller-retour', codec.decodeBase64(codec.encodeBase64('Bonjour Élysia !')) === 'Bonjour Élysia !');
+  check('encodage : hexadécimal aller-retour', codec.decodeHex(codec.encodeHex('café')) === 'café');
+  check('encodage : binaire aller-retour', codec.decodeBinary(codec.encodeBinary('Hi')) === 'Hi');
+  check('encodage : URL aller-retour', codec.decodeUrl(codec.encodeUrl('a b&c=d')) === 'a b&c=d');
+  check('encodage : morse', codec.encodeMorse('SOS') === '... --- ...' && codec.decodeMorse('... --- ...') === 'sos');
+  check('encodage : César symétrique (rot13)', codec.caesar('Bonjour') === 'Obawbhe' && codec.caesar(codec.caesar('Bonjour')) === 'Bonjour');
+  check('encodage : texte inversé', codec.reverseText('abc') === 'cba');
+  check('encodage : SHA-256 de « abc »', codec.hashText('sha256', 'abc') === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  check('encodage : MD5 de « abc »', codec.hashText('md5', 'abc') === '900150983cd24fb0d6963f7d28e17f72');
+  check('encodage : entropie 20 caractères sur 84 symboles', codec.entropyBits(84, 20) > 120, codec.entropyBits(84, 20));
+  check('encodage : jeton hexadécimal de 8 octets', /^[0-9a-f]{16}$/.test(codec.randomToken(8)));
+  {
+    let invalidBase64 = false;
+    try {
+      codec.decodeBase64('???');
+    } catch {
+      invalidBase64 = true;
+    }
+    check('encodage : Base64 invalide refusé', invalidBase64);
+  }
+
+  // ── Utilitaires : fuseaux horaires, dates, anniversaires ──────────────────
+  section('🕒 Fuseaux horaires et dates');
+  const timeUtils = await import('../src/utils/time');
+  const sampleDate = new Date(Date.UTC(2026, 8, 22, 12, 0, 0));
+  const paris = timeUtils.formatInZone(sampleDate, 'Europe/Paris');
+  const tokyoMoment = timeUtils.formatInZone(sampleDate, 'Asia/Tokyo');
+  check('fuseaux : Paris en été = UTC+2', paris.time === '14:00', paris);
+  check('fuseaux : Tokyo = UTC+9', tokyoMoment.time === '21:00', tokyoMoment);
+  check('fuseaux : décalage lisible', timeUtils.zoneOffsetLabel(sampleDate, 'Europe/Paris').startsWith('UTC+2'), timeUtils.zoneOffsetLabel(sampleDate, 'Europe/Paris'));
+  check('fuseaux : 25 villes proposées', timeUtils.WORLD_ZONES.length === 25, timeUtils.WORLD_ZONES.length);
+  check('fuseaux : recherche par nom', timeUtils.findZone('Tokyo')?.id === 'tokyo');
+  check('fuseaux : date locale correcte', timeUtils.zonedDate(sampleDate, 'Asia/Tokyo').day === 22);
+  check('dates : ISO acceptée', timeUtils.parseTargetDate('2027-01-01', 0) === Date.UTC(2027, 0, 1));
+  check('dates : format français accepté', timeUtils.parseTargetDate('25/12/2026 20:30', 0) === Date.UTC(2026, 11, 25, 20, 30));
+  check('dates : durée relative acceptée', timeUtils.parseTargetDate('2h', 1_000) === 1_000 + 7_200_000);
+  check('dates : entrée invalide rejetée', timeUtils.parseTargetDate('demain peut-être', 0) === null);
+  check('dates : 31/02 refusé', timeUtils.parseTargetDate('2026-02-31', 0) === null);
+  check('anniversaires : 29 février autorisé', timeUtils.isValidDayMonth(29, 2) && !timeUtils.isValidDayMonth(30, 2));
+  check('anniversaires : jours restants ≥ 0', timeUtils.daysUntilBirthday(15, 6, sampleDate, 'Europe/Paris') >= 0);
+  check('anniversaires : aujourd’hui détecté', timeUtils.isToday(22, 9, sampleDate, 'Europe/Paris'));
+
+  // ── Services communautaires ───────────────────────────────────────────────
+  section('🎉 Services communautaires');
+  const { levelService, levelProgress, levelFromXp, totalXpForLevel } = await import('../src/services/levelService');
+  check('niveaux : courbe 100 × n²', totalXpForLevel(0) === 0 && totalXpForLevel(3) === 900 && totalXpForLevel(10) === 10_000);
+  check('niveaux : niveau depuis l’XP', levelFromXp(0) === 0 && levelFromXp(99) === 0 && levelFromXp(100) === 1 && levelFromXp(899) === 2 && levelFromXp(900) === 3);
+  {
+    const progress = levelProgress(250);
+    check('niveaux : progression détaillée', progress.level === 1 && progress.into === 150 && progress.needed === 300, progress);
+    check('niveaux : ratio borné', progress.ratio > 0 && progress.ratio < 1);
+  }
+  {
+    const entry = levelService.addXp('guild-levels', 'u-1', 'Alice#0001', 1_050);
+    check('niveaux : XP ajouté et niveau recalculé', entry.xp === 1_050 && entry.level === 3);
+    check('niveaux : rang du premier joueur', levelService.rank('guild-levels', 'u-1') === 1);
+    levelService.addXp('guild-levels', 'u-2', 'Bob#0002', 400);
+    check('niveaux : classement trié par XP', levelService.leaderboard('guild-levels')[0].userId === 'u-1');
+    check('niveaux : rang du second joueur', levelService.rank('guild-levels', 'u-2') === 2);
+    check('niveaux : retrait d’XP jamais négatif', levelService.addXp('guild-levels', 'u-2', 'Bob#0002', -10_000).xp === 0);
+    check('niveaux : réinitialisation', levelService.reset('guild-levels', 'u-2') && levelService.entry('guild-levels', 'u-2') === undefined);
+  }
+
+  const { pollService } = await import('../src/services/pollService');
+  {
+    const poll = pollService.create({
+      guildId: 'guild-poll',
+      channelId: 'chan-1',
+      authorId: 'u-1',
+      authorTag: 'Alice#0001',
+      question: 'Pizza ou burger ?',
+      options: ['Pizza', 'Burger'],
+      durationMs: 60_000,
+    });
+    check('sondages : créé avec deux propositions', poll.options.length === 2);
+    check('sondages : premier vote enregistré', pollService.castVote(poll.id, 'u-1', ['0']) === 'voted');
+    check('sondages : vote identique détecté', pollService.castVote(poll.id, 'u-1', ['0']) === 'same');
+    check('sondages : vote modifié', pollService.castVote(poll.id, 'u-1', ['1']) === 'updated');
+    pollService.castVote(poll.id, 'u-2', ['1']);
+    const results = pollService.results(pollService.get(poll.id)!);
+    check('sondages : décompte et pourcentages', results.totalVoters === 2 && results.lines[1].count === 2 && results.lines[1].percent === 100);
+    check('sondages : gagnant identifié', pollService.leaders(pollService.get(poll.id)!)[0].option.label === 'Burger');
+    check('sondages : retrait du vote', pollService.castVote(poll.id, 'u-2', []) === 'removed');
+    check('sondages : choix invalide ignoré', pollService.castVote(poll.id, 'u-3', ['99']) === 'invalid');
+    pollService.end(poll.id);
+    check('sondages : clôture bloquant les votes', pollService.castVote(poll.id, 'u-4', ['0']) === 'invalid' && pollService.get(poll.id)?.ended === true);
+    check('sondages : sondage échu listé', pollService.due().length === 0);
+    {
+      let tooFew = false;
+      try {
+        pollService.create({ guildId: 'g', channelId: 'c', authorId: 'a', authorTag: 'a', question: 'q', options: ['seul'] });
+      } catch {
+        tooFew = true;
+      }
+      check('sondages : une seule proposition refusée', tooFew);
+    }
+  }
+
+  const { birthdayService } = await import('../src/services/birthdayService');
+  {
+    birthdayService.set({ guildId: 'guild-bday', userId: 'u-1', userTag: 'Alice#0001', day: 22, month: 9 });
+    birthdayService.set({ guildId: 'guild-bday', userId: 'u-2', userTag: 'Bob#0002', day: 1, month: 1, year: 1990 });
+    check('anniversaires : enregistré et relu', birthdayService.get('guild-bday', 'u-1')?.month === 9);
+    check('anniversaires : tri par échéance', birthdayService.upcoming('guild-bday', 5, sampleDate, 'Europe/Paris').length === 2);
+    const pending = birthdayService.pendingAnnouncements('guild-bday', sampleDate, 'Europe/Paris');
+    check('anniversaires : annonce du jour détectée', pending.length === 1 && pending[0].userId === 'u-1', pending);
+    birthdayService.markAnnounced('guild-bday', 'u-1', sampleDate, 'Europe/Paris');
+    check('anniversaires : pas de double annonce', birthdayService.pendingAnnouncements('guild-bday', sampleDate, 'Europe/Paris').length === 0);
+    {
+      let invalid = false;
+      try {
+        birthdayService.set({ guildId: 'guild-bday', userId: 'u-3', userTag: 'X', day: 31, month: 2 });
+      } catch {
+        invalid = true;
+      }
+      check('anniversaires : date impossible refusée', invalid);
+    }
+    check('anniversaires : suppression', birthdayService.remove('guild-bday', 'u-2') && birthdayService.listGuild('guild-bday').length === 1);
+  }
+
+  const { reminderService } = await import('../src/services/reminderService');
+  {
+    const reminder = reminderService.create({
+      guildId: 'guild-rem',
+      channelId: 'chan-1',
+      userId: 'u-1',
+      userTag: 'Alice#0001',
+      text: 'Sortir le chien',
+      dueAt: Date.now() - 1_000,
+    });
+    check('rappels : identifiant court lisible', /^guild-rem:\d+$/.test(reminder.id), reminder.id);
+    check('rappels : échu détecté', reminderService.due().some((entry) => entry.id === reminder.id));
+    check('rappels : comptage par membre', reminderService.countPending('guild-rem', 'u-1') === 1);
+    reminderService.markFired(reminder.id);
+    check('rappels : marqué comme déclenché', reminderService.get(reminder.id)?.fired === true && reminderService.due().length === 0);
+    const snoozed = reminderService.snooze(reminder.id, 60_000);
+    check('rappels : report réactivé', snoozed?.fired === false && (snoozed?.dueAt ?? 0) > Date.now());
+    check('rappels : suppression par un tiers refusée', reminderService.delete(reminder.id, 'u-9') === false);
+    check('rappels : suppression par l’auteur', reminderService.delete(reminder.id, 'u-1') === true);
+    reminderService.markFired(reminder.id);
+    check('rappels : purge des anciens', reminderService.purgeOld(Date.now() + 8 * 86_400_000) === 0);
+  }
+
+  const { countdownService } = await import('../src/services/countdownService');
+  {
+    const countdown = countdownService.create({
+      guildId: 'guild-cd',
+      channelId: 'chan-1',
+      title: 'Sortie du jeu',
+      targetAt: Date.now() + 3_600_000,
+      createdBy: 'u-1',
+      createdByTag: 'Alice#0001',
+    });
+    check('comptes à rebours : créé et actif', countdownService.listActive('guild-cd').length === 1);
+    check('comptes à rebours : échéance non dépassée', countdownService.due().length === 0);
+    countdownService.update(countdown.id, { targetAt: Date.now() - 1 });
+    check('comptes à rebours : échu détecté', countdownService.due().length === 1);
+    countdownService.markEnded(countdown.id);
+    check('comptes à rebours : terminé retiré des actifs', countdownService.listActive('guild-cd').length === 0);
+  }
+
+  const { noteService } = await import('../src/services/noteService');
+  {
+    const note = noteService.add({ guildId: 'guild-note', userId: 'u-1', targetTag: 'Alice#0001', authorId: 'mod', authorTag: 'Modo#0001', text: 'Toujours en retard' });
+    noteService.add({ guildId: 'guild-note', userId: 'u-1', targetTag: 'Alice#0001', authorId: 'mod', authorTag: 'Modo#0001', text: 'Deuxième observation' });
+    check('notes : identifiant composite', note.id === 'guild-note:u-1:1');
+    check('notes : comptage', noteService.count('guild-note', 'u-1') === 2);
+    check('notes : numérotation chronologique', noteService.get('guild-note', 'u-1', 1)?.text === 'Toujours en retard');
+    check('notes : résumé du serveur', noteService.topGuild('guild-note')[0].count === 2);
+    check('notes : suppression', noteService.remove('guild-note', 'u-1', 2) && noteService.count('guild-note', 'u-1') === 1);
+  }
+
+  const { suggestionService, SUGGESTION_STATUS } = await import('../src/services/suggestionService');
+  {
+    const suggestion = suggestionService.create({
+      guildId: 'guild-sug',
+      channelId: 'chan-1',
+      authorId: 'u-1',
+      authorTag: 'Alice#0001',
+      text: 'Ajouter un salon cinéma',
+    });
+    check('suggestions : statut initial', suggestion.status === 'ouverte' && SUGGESTION_STATUS.ouverte.emoji === '🟡');
+    check('suggestions : vote pour', suggestionService.vote(suggestion.id, 'u-1', 'up') === 'up');
+    check('suggestions : vote contre (changement)', suggestionService.vote(suggestion.id, 'u-1', 'down') === 'changed');
+    check('suggestions : retrait du vote', suggestionService.vote(suggestion.id, 'u-1', 'down') === 'removed');
+    suggestionService.vote(suggestion.id, 'u-2', 'up');
+    suggestionService.vote(suggestion.id, 'u-3', 'up');
+    check('suggestions : score calculé', suggestionService.score(suggestionService.get(suggestion.id)!) === 2);
+    suggestionService.setStatus(suggestion.id, 'acceptee', 'admin');
+    check('suggestions : décision enregistrée', suggestionService.get(suggestion.id)?.status === 'acceptee');
+    check('suggestions : meilleures suggestions', suggestionService.top('guild-sug')[0].id === suggestion.id);
+  }
+
+  const duelModuleFun = await import('../src/fun/duel');
+  {
+    const duel = duelModuleFun.createDuel({
+      guildId: 'guild-duel',
+      channelId: 'chan-1',
+      hostId: 'u-1',
+      hostTag: 'Alice#0001',
+      targetId: 'u-2',
+      targetTag: 'Bob#0002',
+      rounds: 3,
+      bet: 'Crier ALLEZ en vocal',
+    });
+    check('duels : créé en attente', duel.status === 'pending' && duel.rounds === 3);
+    check('duels : retrouvé par identifiant', duelModuleFun.getDuel(duel.id)?.targetId === 'u-2');
+    check('duels : refus par un tiers impossible', duelModuleFun.declineDuel(duel.id, 'u-9') === undefined);
+    duelModuleFun.playDuel(duel);
+    check('duels : manches jouées', duel.history.length >= 3);
+    check('duels : un gagnant désigné', duel.winnerId !== null && duel.loserId !== null && duel.winnerId !== duel.loserId);
+    check('duels : score total cohérent', duelModuleFun.totalScore(duel, 'host') >= 3 * 2);
+    check('duels : annulation par l’hôte', duelModuleFun.cancelDuel(duel.id, 'u-1')?.status === 'declined');
+    duelModuleFun.deleteDuel(duel.id);
+    check('duels : suppression', duelModuleFun.getDuel(duel.id) === undefined);
+  }
+
+  const { parsePollChoices } = await import('../src/commands/community/sondage');
+  check('sondages : propositions séparées par « | »', parsePollChoices('A | B | C').join(',') === 'A,B,C');
+  check('sondages : séparateurs tolérants', parsePollChoices('A;B\nC').join(',') === 'A,B,C');
+  check('sondages : propositions vides retirées', parsePollChoices('A || B').join(',') === 'A,B');
+  check('sondages : limite de 10 propositions', parsePollChoices(Array.from({ length: 15 }, (_, index) => `option ${index}`).join('|')).length === 10);
+
+  // ── Aide paginée : aucun champ tronqué ────────────────────────────────────
+  section('📚 Aide et catalogue');
+  const { buildHelpSections, helpPages } = await import('../src/commands/utility/help');
+  {
+    const sections = buildHelpSections(client);
+    check('aide : toutes les catégories présentes', new Set(sections.map((section) => section.category)).size >= 8, new Set(sections.map((section) => section.category)).size);
+    check('aide : aucun champ ne dépasse 1024 caractères', sections.every((section) => section.value.length <= 1024));
+    check('aide : toutes les commandes listées', sections.reduce((sum, section) => sum + (section.value.match(/\*\*\//g)?.length ?? 0), 0) >= client.commands.size);
+    check('aide : pagination cohérente', helpPages(client).length >= 3, helpPages(client).length);
+  }
+  const { renderConfig: renderSettings } = await import('../src/commands/config/config');
+  {
+    const rendered = renderSettings(guildService.get(guildId));
+    check('config : section niveaux affichée', /Niveaux & XP/.test(rendered) && /Rôles de récompense/.test(rendered));
+    check('config : section communauté affichée', /Anniversaires annoncés/.test(rendered) && /Suggestions anonymes/.test(rendered));
+    check('config : nouveaux salons affichés', /Anniversaires :/.test(rendered) && /Suggestions :/.test(rendered));
+  }
+
+  // ── Serveur web (pages + API) ─────────────────────────────────────────────
   section('🌐 Serveur web');
   const { createWebServer } = await import('../src/web/server');
   const server = createWebServer({ client });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
+  const base = `http://127.0.0.1:${port}`;
+  const authHeaders = { headers: { 'x-dashboard-token': process.env.DASHBOARD_TOKEN! } };
+  const asJson = async (route: string, init?: RequestInit): Promise<any> => (await fetch(base + route, init)).json();
 
-  const health = await fetch(`http://127.0.0.1:${port}/health`).then((response) => response.json());
-  check('/health répond status=ok', (health as any).status === 'ok');
-  const stats = await fetch(`http://127.0.0.1:${port}/api/stats`).then((response) => response.json());
-  check('/api/stats expose les commandes chargées', (stats as any).commandCount === client.commands.size);
-  check('/api/stats expose la base de données', Array.isArray((stats as any).database));
-  const metrics = await fetch(`http://127.0.0.1:${port}/metrics`).then((response) => response.text());
-  check('/metrics au format Prometheus', metrics.includes('elysia_up'));
-  const dashboard = await fetch(`http://127.0.0.1:${port}/`);
-  check('tableau de bord HTML servi', (await dashboard.text()).includes('Elysia'));
-  const notFound = await fetch(`http://127.0.0.1:${port}/inconnu`);
+  const health = await asJson('/health');
+  check('/health répond status=ok', health.status === 'ok');
+  const stats = await asJson('/api/stats');
+  check('/api/stats expose les commandes chargées', stats.commandCount === client.commands.size);
+  check('/api/stats expose la base de données', Array.isArray(stats.database));
+  check(
+    '/api/stats expose les compteurs communautaires',
+    typeof stats.xp === 'number' && typeof stats.suggestionsOpen === 'number' && typeof stats.pollsActive === 'number',
+  );
+  const metrics = await (await fetch(`${base}/metrics`)).text();
+  check('/metrics au format Prometheus', metrics.includes('elysia_up') && metrics.includes('elysia_polls_active'));
+
+  const { Script } = await import('node:vm');
+  for (const [route, marker] of [
+    ['/', 'Tableau de bord'],
+    ['/commandes', 'Commandes'],
+    ['/jeux', 'Classement'],
+    ['/communaute', 'Communauté'],
+    ['/donnees', 'Journaux'],
+  ] as Array<[string, string]>) {
+    const response = await fetch(base + route);
+    const html = await response.text();
+    check(`page ${route} servie`, response.status === 200 && html.includes('<html lang="fr">') && html.includes(marker), response.status);
+
+    // Le JavaScript embarqué est compilé sans être exécuté : une apostrophe mal
+    // échappée dans un rendu casserait sinon la page entière côté navigateur.
+    const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
+    let syntaxError: string | null = null;
+    try {
+      new Script(script, { filename: route });
+    } catch (error) {
+      syntaxError = (error as Error).message;
+    }
+    check(`page ${route} : JavaScript valide`, script.length > 0 && syntaxError === null, syntaxError ?? undefined);
+  }
+
+  const index = await asJson('/api');
+  check('/api indexe toutes les routes', Array.isArray(index.endpoints) && index.endpoints.length >= 10, index.endpoints?.length);
+
+  const catalogue = await asJson('/api/commands');
+  check('/api/commands liste toutes les commandes', catalogue.count === client.commands.size && catalogue.commands.length === client.commands.size, catalogue.count);
+  check(
+    '/api/commands catégories renseignées',
+    catalogue.categories.length >= 8 && catalogue.categories.every((entry: any) => entry.count > 0 && entry.label && entry.emoji),
+  );
+  check(
+    '/api/commands détail complet (usage, options, permissions)',
+    catalogue.commands.every(
+      (entry: any) => entry.name && entry.summary && Array.isArray(entry.usage) && Array.isArray(entry.options) && Array.isArray(entry.permissions),
+    ),
+  );
+
+  const games = await asJson('/api/games');
+  check(
+    '/api/games expose les 10 mini-jeux',
+    games.games.length === 10 && games.games.every((entry: any) => entry.id && entry.label && entry.emoji && entry.description),
+    games.games.length,
+  );
+  check(
+    '/api/games comptabilise les parties',
+    typeof games.players === 'number' && typeof games.played === 'number' && typeof games.activeSessions === 'number',
+  );
+
+  const board = await asJson('/api/leaderboard?guild=g1&limit=5');
+  check(
+    '/api/leaderboard renvoie le classement du serveur',
+    board.guild === 'g1' && Array.isArray(board.entries) && board.entries.every((entry: any) => entry.tag && typeof entry.points === 'number' && entry.total && entry.games),
+  );
+
+  const community = await asJson('/api/community?guild=g1&limit=5');
+  check(
+    '/api/community expose niveaux, suggestions, sondages et anniversaires',
+    Array.isArray(community.levels.top) &&
+      typeof community.levels.totalXp === 'number' &&
+      typeof community.suggestions.counts.all === 'number' &&
+      Array.isArray(community.polls.list) &&
+      typeof community.birthdays.total === 'number' &&
+      Array.isArray(community.countdowns),
+  );
+
+  check('/api/logs refusé sans jeton', (await fetch(`${base}/api/logs`)).status === 401);
+  check('/api/cases refusé sans jeton', (await fetch(`${base}/api/cases`)).status === 401);
+  check('/api/notes refusé sans jeton', (await fetch(`${base}/api/notes`)).status === 401);
+  check('/api/logs accepté avec ?token=', (await fetch(`${base}/api/logs?limit=5&token=${process.env.DASHBOARD_TOKEN}`)).status === 200);
+
+  const logs = await asJson('/api/logs?limit=5', authHeaders);
+  check(
+    '/api/logs renvoie des lignes exploitables',
+    Array.isArray(logs.logs) && logs.logs.every((entry: any) => typeof entry.time === 'string' && entry.scope && entry.level),
+    logs.logs?.length,
+  );
+  const cases = await asJson('/api/cases?guild=g1', authHeaders);
+  check('/api/cases accessible avec le jeton', Array.isArray(cases.cases), cases.cases?.length);
+  const notes = await asJson('/api/notes?guild=g1', authHeaders);
+  check('/api/notes accessible avec le jeton', Array.isArray(notes.notes));
+  const giveaways = await asJson('/api/giveaways?guild=g1');
+  check('/api/giveaways expose les concours', Array.isArray(giveaways.active) && Array.isArray(giveaways.ended));
+  const panels = await asJson('/api/panels?guild=g1');
+  check('/api/panels expose les panneaux', Array.isArray(panels.panels));
+
+  // Tampon circulaire alimentant la page « Données ».
+  const { logger: ringLogger, recentLogs, clearRecentLogs } = await import('../src/core/logger');
+  clearRecentLogs();
+  ringLogger.child('self-test').error('ligne de test du tampon');
+  const ring = recentLogs(10);
+  check(
+    'tampon de journal circulaire',
+    ring.some((entry) => entry.message === 'ligne de test du tampon') &&
+      ring.every((entry) => typeof entry.clock === 'string' && entry.time > 0 && entry.scope.length > 0),
+  );
+
+  const notFound = await fetch(`${base}/inconnu`);
   check('route inconnue → 404', notFound.status === 404);
+  const notFoundApi = await fetch(`${base}/api/inconnu`);
+  check(
+    'route API inconnue → 404 JSON',
+    notFoundApi.status === 404 && (notFoundApi.headers.get('content-type') ?? '').includes('json'),
+  );
+  check('favicon sans erreur', (await fetch(`${base}/favicon.ico`)).status === 204);
   await new Promise<void>((resolve) => server.close(() => resolve()));
 
   // ── Nettoyage & résumé ────────────────────────────────────────────────────

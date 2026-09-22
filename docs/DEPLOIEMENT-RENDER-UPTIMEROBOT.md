@@ -106,6 +106,7 @@ Cette méthode lit automatiquement le fichier `render.yaml` du projet (plan grat
    | `DISCORD_TOKEN` | votre token (coller) |
    | `CLIENT_ID` | votre Application ID |
    | `DEV_GUILD_ID` | *(optionnel)* l'identifiant de votre serveur Discord de test → commandes publiées instantanément |
+   | `COMMANDS_SCOPE` | *(optionnel, `auto` par défaut)* portée de publication : `auto` (une seule portée, pas de doublon), `guild`, `global` ou `both` ⚠️ (doublons) |
    | `OWNER_IDS` | votre identifiant Discord |
    | `SELF_PING_URL` | `https://elysia-bot.onrender.com` *(à ajuster après le déploiement avec l'URL réelle donnée par Render)* |
 
@@ -173,9 +174,15 @@ Si vous préférez tout régler à la main :
 
    * `https://VOTRE-SERVICE.onrender.com/health` → `{"status":"ok","ready":true,…}`
    * `https://VOTRE-SERVICE.onrender.com/` → **tableau de bord** (latence, serveurs, mémoire, giveaways actifs).
+   * `https://VOTRE-SERVICE.onrender.com/commandes` → catalogue des 52 commandes, filtrable.
+   * `https://VOTRE-SERVICE.onrender.com/jeux` → classements des mini-jeux par serveur.
+   * `https://VOTRE-SERVICE.onrender.com/communaute` → niveaux, suggestions, sondages, anniversaires.
+   * `https://VOTRE-SERVICE.onrender.com/donnees` → sanctions, notes du staff et journaux (exige `DASHBOARD_TOKEN` s'il est défini).
+   * `https://VOTRE-SERVICE.onrender.com/api` → index JSON de toutes les routes.
 
 3. Dans Discord, tapez `/help` : les commandes doivent apparaître.
    * Si elles n'apparaissent pas tout de suite : définissez `DEV_GUILD_ID` puis **Manual Deploy → Clear build cache & deploy** (publication instantanée sur ce serveur), ou attendez jusqu'à 1 heure (publication globale).
+   * Si elles apparaissent **en double** : laissez `COMMANDS_SCOPE=auto` (ou `guild`/`global`). Avec `both`, Discord affiche chaque commande deux fois sur le serveur de développement ; `/owner commandes` nettoie les doublons à chaud.
 
 4. Mettez à jour `SELF_PING_URL` avec l'URL réelle si ce n'est pas déjà fait, puis **Save Changes** (Render redéploie automatiquement).
 

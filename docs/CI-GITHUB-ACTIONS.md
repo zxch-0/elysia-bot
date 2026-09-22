@@ -35,7 +35,7 @@ jobs:
           cache: npm
 
       - name: Installation des dépendances
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Vérification des types
         run: npm run typecheck

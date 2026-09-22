@@ -29,14 +29,12 @@ async function main(): Promise<void> {
   await loadCommands(client);
   registerInteractionModules(client);
 
-  if (config.devGuildId) {
-    log.info(`Publication sur le serveur de développement ${config.devGuildId} puis en global…`);
-  } else {
-    log.info('Publication globale (propagation jusqu’à 1 heure)…');
-  }
+  log.info(`Portée configurée : COMMANDS_SCOPE=${config.commandsScope}${config.devGuildId ? ` • DEV_GUILD_ID=${config.devGuildId}` : ''}`);
 
-  const count = await publishCommands(client, { clear });
-  log.success(`${count} commande(s) publiée(s). Lancez le bot avec \`npm start\`.`);
+  const report = await publishCommands(client, { clear });
+  log.success(`${report.published} commande(s) publiée(s) (portée : ${report.scope}). Lancez le bot avec \`npm start\`.`);
+  if (report.cleaned.global > 0) log.info(`${report.cleaned.global} commande(s) globale(s) retirée(s) pour éviter les doublons.`);
+  for (const guild of report.cleaned.guilds) log.info(`${guild.removed} commande(s) retirée(s) sur ${guild.guildId} pour éviter les doublons.`);
 
   // Publication idempotente au démarrage du bot : pas besoin de relancer ce script.
   log.info('Rappel : le bot publie automatiquement ses commandes à chaque démarrage.');

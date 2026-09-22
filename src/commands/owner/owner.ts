@@ -9,7 +9,8 @@ import { confirmRow } from '../../ui/components';
 import { registerConfirmation } from '../../modules/confirmationModule';
 import { shortCode } from '../../utils/random';
 import { loadCommands } from '../../core/handlers/commandLoader';
-import { publishCommands } from '../../core/handlers/commandPublisher';
+import { inspectCommandScopes, publishCommands, removeDuplicateCommands } from '../../core/handlers/commandPublisher';
+import { loadConfig } from '../../core/config';
 import { giveawayService } from '../../services/giveawayService';
 import { caseService } from '../../services/caseService';
 import { guildService } from '../../services/guildService';
@@ -35,6 +36,9 @@ const ownerCommand: Command = {
         .addStringOption((option) => option.setName('message').setDescription('Message à diffuser').setRequired(true).setMaxLength(1500)),
     )
     .addSubcommand((sub) => sub.setName('recharger').setDescription('Recharge les commandes et les republie sur Discord'))
+    .addSubcommand((sub) =>
+      sub.setName('commandes').setDescription('Diagnostique et supprime les commandes publiées en double (serveur + global)'),
+    )
     .addSubcommand((sub) =>
       sub
         .setName('activite')
@@ -176,17 +180,22 @@ const ownerCommand: Command = {
 
       for (const key of [...client.commands.keys()]) client.commands.delete(key);
       await loadCommands(client);
-      const count = await publishCommands(client, { clear: true });
+      const report = await publishCommands(client, { clear: true });
 
       return ctx.send(
         baseEmbed({
           title: '♻️ Commandes rechargées',
           description: [
             `**${client.commands.size}** commande(s) chargée(s) en mémoire.`,
-            `**${count}** commande(s) publiée(s) sur Discord.`,
+            `**${report.published}** commande(s) publiée(s) sur Discord (portée : **${report.scope}**).`,
+            report.cleaned.global > 0 ? `**${report.cleaned.global}** commande(s) globale(s) retirée(s) (doublons).` : '',
+            ...report.cleaned.guilds.map((guild) => `**${guild.removed}** commande(s) retirée(s) sur \`${guild.guildId}\` (doublons).`),
             '',
+            'Publication effectuée dans une seule portée : plus aucune commande en double dans le sélecteur Discord.',
             'Les modifications de code nécessitent un redéploiement (Render → Manual Deploy).',
-          ].join('\n'),
+          ]
+            .filter((line) => line !== '')
+            .join('\n'),
           color: THEME.colors.success,
         }),
       );
@@ -196,6 +205,39 @@ const ownerCommand: Command = {
       const text = ctx.string('texte');
       client.user?.setPresence({ activities: [{ name: text, type: ActivityType.Watching }], status: 'online' });
       return ctx.success('Statut mis à jour', `Le bot affiche désormais : **${text}**`);
+    }
+
+    if (sub === 'commandes') {
+      const before = await inspectCommandScopes(client);
+      const cleanedReport = before.duplicates.length > 0 ? await removeDuplicateCommands(client) : { removed: 0 };
+      // En cas de nettoyage, on relit l'état réel pour afficher le résultat.
+      const after = cleanedReport.removed > 0 ? await inspectCommandScopes(client) : before;
+
+      const lines = [
+        `Portée configurée (\`COMMANDS_SCOPE\`) : **${loadConfig().commandsScope}**`,
+        `Commandes globales enregistrées : **${after.global.length}**`,
+        ...after.guilds.map(
+          (guild) => `Serveur \`${guild.guildId}\` : **${guild.commands.length}** commande(s) publiée(s) localement`,
+        ),
+        '',
+        before.duplicates.length === 0
+          ? '✅ Aucun doublon : chaque commande n’est publiée que dans une seule portée.'
+          : [
+              `⚠️ **${before.duplicates.length}** doublon(s) détecté(s) : ${before.duplicates.map((name) => `\`/${name}\``).join(', ')}`,
+              `${cleanedReport.removed} entrée(s) supprimée(s) → Discord n’affichera plus ces commandes deux fois.`,
+              'Faites `Ctrl+R` sur Discord pour rafraîchir le sélecteur de commandes.',
+            ].join('\n'),
+        '',
+        'Pour éviter durablement les doublons, laissez `COMMANDS_SCOPE=auto` (publication dans une seule portée).',
+      ];
+
+      return ctx.send(
+        baseEmbed({
+          title: '🧭 Commandes publiées',
+          description: lines.join('\n'),
+          color: before.duplicates.length === 0 ? THEME.colors.success : THEME.colors.warning,
+        }),
+      );
     }
 
     if (sub === 'nettoyer') {

@@ -126,7 +126,7 @@ Activez le mode développeur Discord (*Paramètres → Avancés → Mode dévelo
 
 1. **Forkez** ce dépôt sur votre compte GitHub.
 2. Sur [render.com](https://render.com) : **New +** → **Blueprint** → sélectionnez votre fork (Render lit `render.yaml`).
-   *Alternative manuelle :* **New + → Web Service**, `Build Command` = `npm ci && npm run build`, `Start Command` = `npm start`, plan **Free**.
+   *Alternative manuelle :* **New + → Web Service**, `Build Command` = `npm ci --include=dev && npm run build`, `Start Command` = `npm start`, plan **Free**.
 3. Renseignez les variables secrètes : `DISCORD_TOKEN`, `CLIENT_ID`, `DEV_GUILD_ID` (optionnel), `OWNER_IDS`, `SELF_PING_URL`.
 4. Attendez le déploiement (`Deploy live` 🎉) puis vérifiez `https://VOTRE-SERVICE.onrender.com/health`.
 5. Créez un moniteur **HTTP(s)** sur [UptimeRobot](https://uptimerobot.com) pointant vers `https://VOTRE-SERVICE.onrender.com/health`, intervalle **5 minutes** → le service ne s'endort plus.
@@ -250,6 +250,7 @@ elysia-bot/
 | `Missing Permissions` | Le rôle du bot doit être **au-dessus** des rôles gérés + permission manquante |
 | Les panneaux ne donnent pas les rôles | `/config salut` ou `/rolepanel apercu` → diagnostics automatiques |
 | Le bot s'endort sur Render | Configurez UptimeRobot sur `/health` (voir tutoriel) |
+| Build Render : `error TS5108` (`moduleResolution=node10`) | `tsconfig.json` sans `moduleResolution` + Build Command `npm ci --include=dev && npm run build` |
 
 👉 Toutes les causes et solutions : **[docs/DEPANNAGE.md](docs/DEPANNAGE.md)**
 

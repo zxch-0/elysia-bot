@@ -109,7 +109,7 @@ Cette méthode lit automatiquement le fichier `render.yaml` du projet (plan grat
    | `OWNER_IDS` | votre identifiant Discord |
    | `SELF_PING_URL` | `https://elysia-bot.onrender.com` *(à ajuster après le déploiement avec l'URL réelle donnée par Render)* |
 
-5. Cliquez **Apply** / **Create Resources**. Render lance le `Build Command` (`npm ci && npm run build`).
+5. Cliquez **Apply** / **Create Resources**. Render lance le `Build Command` (`npm ci --include=dev && npm run build`).
 6. Patientez 2 à 5 minutes : l'état passe de `Building` → `Deploying` → **`Live`** 🎉.
 
 ---
@@ -128,7 +128,7 @@ Si vous préférez tout régler à la main :
    | **Region** | la plus proche de vos membres (ex. Frankfurt) |
    | **Branch** | `main` |
    | **Runtime** | `Node` |
-   | **Build Command** | `npm ci && npm run build` |
+   | **Build Command** | `npm ci --include=dev && npm run build` |
    | **Start Command** | `npm start` |
    | **Instance Type** | **Free** |
    | **Health Check Path** | `/health` |
@@ -292,6 +292,8 @@ Les données (cases de modération, giveaways, panneaux, configuration des serve
 | Symptôme | Cause probable | Solution |
 |---|---|---|
 | `Deploy failed` — `npm ci` en erreur | `package-lock.json` absent ou désynchronisé | En local : `npm install` puis `git add package-lock.json && git commit && git push`. Vérifiez aussi que **Root Directory** est vide dans les réglages Render |
+| Build : `error TS5108: Option 'moduleResolution=node10' has been removed` | Un TypeScript ≥ 7 a compilé à la place de celui du projet (dépendances de dev non installées, `NODE_ENV=production`) | `tsconfig.json` ne contient plus `moduleResolution` et le Build Command est `npm ci --include=dev && npm run build` (déjà en place dans `render.yaml`) → redéployez |
+| Build : `sh: tsc: command not found` | `typescript`/`tsx` absents car installés sans les dépendances de dev | Build Command = `npm ci --include=dev && npm run build` |
 | Log : `DISCORD_TOKEN manquant` | Variable non définie (ou mal orthographiée) | Environment → vérifiez le nom exact, sans espace, puis Save Changes |
 | Log : `TokenInvalid` / HTTP 401 | Token révoqué, tronqué, ou guillemets inclus | Developer Portal → **Reset Token**, recollez la valeur **sans guillemets**. Testez en local : `npm run validate` |
 | Log : `Used disallowed intents` | Intents privilégiés désactivés | Developer Portal → Bot → activez **SERVER MEMBERS INTENT** et **MESSAGE CONTENT INTENT** |

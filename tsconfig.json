@@ -2,7 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
-    "moduleResolution": "node",
+    // "moduleResolution" volontairement absent : l'ancienne valeur "node" (alias "node10")
+    // est dépréciée depuis TS 5.5 et supprimée depuis TypeScript 7 (error TS5108).
+    // Le défaut dérivé de "module": "CommonJS" compile à l'identique sur TS 5.9, 6.x et 7.x.
     "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": ".",

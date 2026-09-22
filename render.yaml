@@ -10,7 +10,7 @@ services:
     plan: free
     region: frankfurt # oregon | ohio | virginia | singapore
     branch: main
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build # --include=dev : NODE_ENV=production ferait sinon sauter typescript/tsx
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true

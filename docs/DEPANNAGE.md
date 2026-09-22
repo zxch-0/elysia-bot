@@ -106,6 +106,8 @@ Corrections : remonter le rôle du bot, ou choisir d'autres rôles.
 | Symptôme | Solution |
 |---|---|
 | `Deploy failed` sur `npm ci` | `package-lock.json` manquant/désynchronisé → en local : `npm install`, commit, push |
+| Build : `error TS5108 … 'moduleResolution=node10' has been removed` | Un TypeScript ≥ 7 a compilé à la place de celui du projet : retirez `"moduleResolution"` de `tsconfig.json` (déjà fait) **et** utilisez `npm ci --include=dev && npm run build` comme Build Command |
+| Build : `tsc: command not found` | `NODE_ENV=production` fait sauter les dépendances de dev (`typescript`, `tsx`) → `npm ci --include=dev` |
 | Build OK mais service en échec | Ouvrez **Logs** : 90 % du temps il s'agit de `DISCORD_TOKEN` absent ou d'un intent désactivé |
 | `502 Bad Gateway` | Le conteneur redémarre. Patientez 1 min ; si persistant, cherchez l'erreur dans les Logs |
 | « No open ports detected » | Vous avez défini `PORT` manuellement : **supprimez** la variable, Render l'injecte lui-même |

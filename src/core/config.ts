@@ -24,7 +24,19 @@ const envSchema = z.object({
     .default('0')
     .transform((value) => ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())),
   NODE_ENV: z.string().default('development'),
+  // Fuseau utilisé pour déterminer « quel jour on est » (anniversaires).
+  BIRTHDAY_TIMEZONE: z.string().default('Europe/Paris'),
+  // Portée de publication des slash-commands : auto | guild | global | both.
+  // « auto » évite les doublons (une commande publiée à la fois en global et
+  // sur un serveur apparaît DEUX FOIS dans le sélecteur Discord).
+  COMMANDS_SCOPE: z.enum(['auto', 'guild', 'global', 'both']).default('auto'),
+  // Jeton optionnel protégeant les pages sensibles du site intégré
+  // (/donnees, /api/cases, /api/notes, /api/logs). Vide = accès libre.
+  DASHBOARD_TOKEN: z.string().optional().default(''),
 });
+
+/** Portée de publication des slash-commands (voir src/core/handlers/commandPublisher.ts). */
+export type CommandsScope = 'auto' | 'guild' | 'global' | 'both';
 
 export interface AppConfig {
   token: string | undefined;
@@ -42,6 +54,12 @@ export interface AppConfig {
   nodeEnv: string;
   dataDir: string;
   assetsDir: string;
+  /** Fuseau horaire des annonces d'anniversaires. */
+  birthdayTimezone: string;
+  /** Portée de publication des slash-commands. */
+  commandsScope: CommandsScope;
+  /** Jeton du tableau de bord (vide = pages sensibles en accès libre). */
+  dashboardToken: string;
 }
 
 let cached: AppConfig | undefined;
@@ -95,6 +113,9 @@ export function loadConfig(): AppConfig {
     nodeEnv: env.NODE_ENV,
     dataDir: 'data',
     assetsDir: 'assets',
+    birthdayTimezone: env.BIRTHDAY_TIMEZONE,
+    commandsScope: env.COMMANDS_SCOPE,
+    dashboardToken: env.DASHBOARD_TOKEN.trim(),
   };
 
   return cached;

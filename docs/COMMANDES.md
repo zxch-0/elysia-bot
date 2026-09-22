@@ -1,6 +1,6 @@
 # 📚 Référence complète des commandes — Elysia v1.0.0
 
-**22 commandes slash.** Les paramètres marqués *(opt)* sont facultatifs, les autres sont obligatoires.
+**52 commandes slash** réparties en 9 catégories : modération, giveaways, rôles & panneaux, **communauté & animation**, configuration, utilitaires, mini-jeux, **divertissement**, propriétaire. Les paramètres marqués *(opt)* sont facultatifs, les autres sont obligatoires.
 Sauf mention contraire, toutes les réponses sont **privées** (éphémères) : personne ne voit vos manipulations.
 
 > 🔑 **Permissions** — entre crochets : `[Admin]` = administrateur du serveur, `[Perm]` = permission Discord spécifique, `[Staff]` = rôle staff configuré via `/config roles-staff`, `[Hôte]` = rôle hôte de giveaway, `[Owner]` = `OWNER_IDS`.
@@ -71,6 +71,37 @@ Retire à la fois le timeout natif **et** le rôle muet, et clôt les cases asso
 
 ### `/slowmode` — Mode lent `[Perm: Gérer les salons]`
 `secondes` (0 = désactivé, max 21600), `salon` *(opt)*, `raison` *(opt)*.
+
+### `/note` — Notes internes du staff `[Staff]`
+Carnet privé **sans sanction** : les notes ne sont jamais visibles du membre ni dans les logs publics.
+
+| Sous-commande | Options | Description |
+|---|---|---|
+| `ajouter` | `membre` `note` | Enregistre une observation (800 caractères max) |
+| `liste` | `membre` | Notes d'un membre, numérotées ; **vous êtes prévenu par MP** |
+| `supprimer` | `membre` `numero` | Supprime la note n° (voir `liste`) |
+| `resume` | — | Top 10 des membres les plus commentés par le staff |
+
+```bash
+/note ajouter membre:@Léo note:Toujours en retard en vocal
+/note liste membre:@Léo
+/note supprimer membre:@Léo numero:2
+```
+
+### `/bannissements` — Registre des bannissements `[Staff]`
+`recherche` *(opt)*, `temporaires` *(opt)*, `export` *(opt)*.
+
+Fusionne la liste Discord (`bans.fetch`) et les **cases** locales : raison, modérateur, date, **bannissements temporaires en cours** (avec temps restant) et export **JSON** en pièce jointe pour archivage.
+
+### `/vocal` — Modération vocale `[Perm: Déplacer des membres]`
+| Sous-commande | Options | Description |
+|---|---|---|
+| `deplacer` | `membre` `salon` | Déplace un membre (ou tout un salon) vers un autre vocal |
+| `expulser` | `membre` | Déconnecte du vocal |
+| `muet` | `membre` `actif` | Server mute / unmute |
+| `verrouiller` | `salon` `verrouille` | Autorise ou interdit l'accès à un vocal |
+| `limite` | `salon` `limite` | Fixe la limite de places (0 = illimité) |
+| `personnes` | — | Qui est connecté, où, et avec quels états (muet, sourd, streaming) |
 
 ---
 
@@ -160,6 +191,44 @@ Le brouillon expire après 20 minutes et reste privé jusqu'à validation.
 
 ---
 
+## 🎉 Communauté & animation
+
+### `/sondage` — Sondages interactifs
+`question` `choix` (`Pizza | Burger | Sushi`, 2 à 10) • `duree?` (`1h`, `2j`) • `multiple?` • `anonyme?` • `ping?` • `epingler?`.
+
+Vote par **boutons**, résultats en direct dans l'embed, **clôture automatique** à l'échéance avec annonce du gagnant, boutons `Résultats` / `Terminer` / `Effacer mon vote`.
+
+### `/suggestion` — Boîte à idées
+
+| Sous-commande | Options | Description |
+|---|---|---|
+| `envoyer` | `idee` `anonyme?` | Publie dans le salon configuré (fil de discussion automatique si activé) |
+| `liste` | `statut?` | Dernières suggestions (`ouverte`, `acceptee`, `refusee`, `archivee`) |
+| `top` | — | Suggestions les mieux notées (score = 👍 − 👎) |
+| `config` | `salon?` `anonyme_par_defaut?` `fils?` | Réglages réservés aux administrateurs |
+
+Boutons 👍 / 👎 / 📊 / ✅ acceptée / ❌ refusée / 🗄️ archivée : chaque membre vote une fois, le score se met à jour en direct, l'auteur peut modifier sa suggestion.
+
+### `/anniversaire` — Anniversaires du serveur
+`definir jour: mois: annee?` • `retirer` • `prochain nombre?` • `liste` • `moi`.
+
+Le jour J, le bot publie une annonce dans le salon configuré (fuseau réglable via `BIRTHDAY_TIMEZONE`), avec l'âge quand l'année est renseignée.
+
+### `/compte-a-rebours` — Compte à rebours d'événement
+`creer titre: echeance: description? salon? ping?` • `liste` • `supprimer identifiant:`.
+
+Dates en **horodatage Discord** (`dans 3 heures`), boutons **⏱️ Temps restant** et **🔔 Me prévenir** (rappel privé 10 minutes avant), annonce automatique avec mention du rôle à l'échéance.
+
+### `/niveau` — XP, niveaux et récompenses
+`voir membre?` • `classement taille?` • `recompenses` • `config` • `recompense action: niveau: role:` • `ajuster membre: xp:` *(staff)*.
+
+Gain d'XP par message (15–25 XP, une fois par minute), courbe `100 × niveau²`, annonce des montées de niveau et **rôles automatiques** par palier.
+
+### `/tirage` — Tirage au sort séparé des giveaways
+`gagnants?` `role?` `anciennete?` `avec_bots?` `recompense?` — fonctionne immédiatement, sans concours ni participation : idéal pour départager un salon.
+
+---
+
 ## 🛠️ Configuration
 
 ### `/config` — `[Admin]`
@@ -195,11 +264,26 @@ Le brouillon expire après 20 minutes et reste privé jusqu'à validation.
 
 ## ✨ Utilitaires
 
-| Commande | Description |
-|---|---|
-| `/help` | Aide **paginée** par catégorie (`categorie?` pour filtrer) |
-| `/bot-stats` | Latence, uptime, mémoire, serveurs, giveaways, panneaux, compteurs de session |
-| `/invite` | Génère le lien d'invitation du bot (bouton cliquable) |
+| Commande | Options | Description |
+|---|---|---|---|
+| `/help` | `categorie?` | Aide **paginée** par catégorie |
+| `/bot-stats` | — | Latence, uptime, mémoire, serveurs, giveaways, panneaux, compteurs de session |
+| `/invite` | — | Génère le lien d'invitation du bot (bouton cliquable) |
+| `/profil` | `membre?` `public?` | Fiche complète : ancienneté, rôles, niveau/XP, statistiques de jeux, sanctions |
+| `/avatar` | `membre?` `banniere?` | Avatar, bannière et liens de téléchargement (PNG, WebP, GIF) |
+| `/serveur` | — | Population, salons, boosts, fonctionnalités, date de création |
+| `/roles` | `tri?` `recherche?` `page?` `diagnostic?` | Rôles triés par membres/position/nom + **diagnostic** (rôles vides, doublons, non attribuables) |
+| `/emojis` | `type?` `tri?` `recherche?` `page?` | Émojis et stickers (usages estimés, date d'ajout, pagination) |
+| `/membres` | `derniers?` | Statistiques de population : humains/bots, présence, ancienneté moyenne |
+| `/invitations` | `liste` • `creer salon? duree? utilisations? temporaire?` | Invitations actives (usages) ou création sur mesure |
+| `/snipe` | `type?` `position?` `historique?` | Dernier message **supprimé** ou **modifié** du salon (30 min de mémoire) |
+| `/rappel` | `creer dans: quoi: salon? mention?` • `liste tous?` • `supprimer identifiant:` | Rappels à la seconde, boutons **⏰ +10 min / ✅ Terminé / 🗑️ Annuler** (10 rappels max par membre) |
+| `/heure` | `ville` `ville2?` `ville3?` `ville4?` | Heure locale de 25 villes du monde, décalage et date |
+| `/meteo` | `ville` `jours?` | Météo actuelle + prévisions 1 à 4 jours (Open-Meteo, sans clé d'API) |
+| `/calculer` | `expression` `public?` | Calculatrice : opérateurs, fonctions scientifiques, `15% de 240`, factorielles, `pi` |
+| `/convertir` | `valeur` `de` `vers` | Conversions entre 45+ unités (longueurs, masses, températures, données, temps, vitesse…) |
+| `/motdepasse` | `type?` `longueur?` `nombre?` | Mot de passe / phrase de passe / PIN / jeton + entropie estimée (réponse privée) |
+| `/code` | `encoder` • `decoder` • `hacher` | Base64, hexadécimal, binaire, URL, morse, César, inversion + SHA-256/512/1, MD5 |
 
 ---
 
@@ -231,7 +315,22 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 
 ---
 
+## 🤪 Divertissement
+
+| Commande | Options | Description |
+|---|---|---|
+| `/des` | `notation?` `lancers?` `seuil?` `prive?` | Notation `2d6+3`, `4d6`, `d20` — détail des dés, totaux, réussites/seuil, statistiques |
+| `/8ball` | `question` | Boule magique 🎱 : réponse parmi 20, ambiance garantie |
+| `/citation` | `theme?` | Citations (motivation, sagesse, amitié, code, absurde) |
+| `/blague` | `categorie?` `direct?` | Blague avec **chute cachée** derrière un bouton (ou `direct:true`) |
+| `/pile-ou-face` | `pari?` `lancers?` | Pile ou face, pari et séries (jusqu'à 50 lancers, plus longue série) |
+| `/duel` | `adversaire` `gage?` `manches?` | Duel de dés 1, 3 ou 5 manches : boutons **Accepter / Refuser / Annuler**, mort subite, revanche, gage affiché au perdant |
+
+---
+
 ## 👑 Propriétaire `[Owner]`
+
+### `/owner` — Maintenance du bot
 
 | Sous-commande | Description |
 |---|---|
@@ -239,7 +338,8 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 | `serveurs` | Liste des serveurs (triée par taille) |
 | `quitter identifiant:` | Fait quitter le bot d'un serveur (confirmation) |
 | `diffuser message:` | MP à tous les propriétaires de serveurs |
-| `recharger` | Recharge et republie les commandes à chaud |
+| `recharger` | Recharge et republie les commandes à chaud (publication en **une seule portée**) |
+| `commandes` | **Diagnostic des doublons** : portée configurée, commandes globales et par serveur, suppression immédiate des doublons détectés |
 | `activite texte:` | Change le statut affiché du bot |
 | `nettoyer` | Supprime les giveaways orphelins et les cases archivées de plus de 6 mois |
 
@@ -257,8 +357,28 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 | `/rolepanel`, `/embed`, `/role`, `/autorole` | Gérer les rôles | Gérer les rôles + Intégrer des liens + Joindre des fichiers |
 | `/config` | Gérer le serveur | Gérer les rôles |
 | `/giveaway` | Admin ou rôle hôte | Intégrer des liens, Envoyer des messages |
+| `/note` | Rôle staff | Gérer les rôles (MP de notification uniquement) |
+| `/bannissements` | Rôle staff | Bannir des membres (lecture de la liste) |
+| `/vocal` | Déplacer des membres | Déplacer des membres, Rendre muet, Gérer les salons |
+| `/tirage` | Rôle hôte ou auteur | Envoyer des messages |
+| `/suggestion config`, `/niveau config`, `/niveau recompense` | Gérer le serveur | Gérer les rôles |
 
 Un refus renvoie toujours un message **explicatif** (permission manquante, rôle trop haut, cible hors de portée…), jamais une erreur muette.
+
+---
+
+## 🕒 Tâches automatiques (planificateur interne)
+
+| Tâche | Fréquence | Effet |
+|---|---|---|
+| Giveaways | 15 s | Clôture à l'échéance, tirage pondéré, MP aux gagnants |
+| Rôles de panneaux | 2 min | Réparation des messages supprimés, statistiques |
+| Cases expirées | 1 min | Levée automatique des mutes/banissements temporaires |
+| Rappels | 20 s | Déclenchement à la seconde + boutons snooze |
+| Comptes à rebours | 30 s | Annonce avec mention du rôle le jour J |
+| Sondages | 20 s | Clôture automatique et annonce du gagnant |
+| Anniversaires | 5 min | Annonce du jour (fuseau `BIRTHDAY_TIMEZONE`) |
+| Entretien | 30 min | Purge des rappels (> 7 j), comptes à rebours, sondages et vieilles parties (> 30 j) |
 
 ---
 
@@ -274,4 +394,10 @@ Un refus renvoie toujours un message **explicatif** (permission manquante, rôle
 | Boutons `Confirmer/Annuler` | Toute action destructrice (purge globale, reset, suppression) — seul l'auteur peut confirmer, expiration 60 à 90 s |
 | Pagination de `/help` | Navigation ⏮️ ◀️ ▶️ ⏭️ |
 | Boutons du créateur d'embed | Rôles, image, salon, type de composant, couleurs, publication |
+| 🗳️ Vote d'un sondage (`poll:`) | Vote, changement ou retrait du vote ; `Résultats`, `Terminer` (auteur), `Effacer mon vote` |
+| 👍/👎 d'une suggestion (`sug:`) | Vote unique par membre ; `📊 Statistiques`, `✅ Acceptée`, `❌ Refusée`, `🗄️ Archivée` (staff) |
+| ⏱️/🔔 d'un compte à rebours (`cd:`) | Temps restant (éphémère) et **rappel privé** à l'approche de l'échéance |
+| ⚔️ Boutons de duel (`duel:`) | Accepter / Refuser / Annuler / Revanche / Fermer, mort subite automatique |
+| ⏰ Boutons de rappel (`rem:`) | Snooze +10 min, Terminé, Annuler, Repousser à demain |
+| 😂 Chute d'une blague (`fun:punchline:`) | Révèle la chute (seul l'auteur du message peut la dévoiler) |
 | Boutons / menus / modales des mini-jeux (`g:`) | Cases de jeu, choix de réponse, lettres du pendu, mots de Motus, mises du blackjack, Accepter/Refuser/Rejoindre, Abandonner, Revanche — seuls les joueurs concernés peuvent agir |

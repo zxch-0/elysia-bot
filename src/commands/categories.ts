@@ -20,6 +20,12 @@ export const CATEGORIES: CategoryMeta[] = [
     description: 'Panneaux de rôles avec boutons/menus, images d’illustration et embeds personnalisés.',
   },
   {
+    id: 'community',
+    label: 'Communauté & animation',
+    emoji: '🎉',
+    description: 'Sondages, suggestions, anniversaires, niveaux, comptes à rebours et tirages au sort.',
+  },
+  {
     id: 'config',
     label: 'Configuration',
     emoji: '🛠️',
@@ -36,6 +42,12 @@ export const CATEGORIES: CategoryMeta[] = [
     label: 'Mini-jeux',
     emoji: '🎮',
     description: 'Morpion, Puissance 4, quiz, pendu, Motus, démineur, 2048, blackjack, memory… avec classement.',
+  },
+  {
+    id: 'fun',
+    label: 'Divertissement',
+    emoji: '🤪',
+    description: 'Dés, boule magique, citations, blagues, duels et pile ou face.',
   },
   {
     id: 'owner',

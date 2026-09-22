@@ -6,6 +6,12 @@ import { giveawayModule } from './giveawayModule';
 import { helpModule } from './helpModule';
 import { caseModule } from './caseModule';
 import { embedBuilderModule } from './embedModule';
+import { funModule } from './funModule';
+import { pollModule } from './pollModule';
+import { suggestionModule } from './suggestionModule';
+import { countdownModule } from './countdownModule';
+import { duelModule } from './duelModule';
+import { reminderModule } from './reminderModule';
 import { gameModule } from './gameModule';
 import { registerGames } from '../games/registry';
 import { gameService } from '../services/gameService';
@@ -14,7 +20,21 @@ const log = logger.child('modules');
 
 /** Enregistre tous les modules d'interaction sur le client. */
 export function registerInteractionModules(client: ElysiaClient): void {
-  const modules = [confirmationModule, panelRoleModule, giveawayModule, embedBuilderModule, helpModule, caseModule, gameModule];
+  const modules = [
+    confirmationModule,
+    panelRoleModule,
+    giveawayModule,
+    embedBuilderModule,
+    helpModule,
+    caseModule,
+    gameModule,
+    pollModule,
+    suggestionModule,
+    countdownModule,
+    duelModule,
+    reminderModule,
+    funModule,
+  ];
   registerGames();
   gameService.attach(client);
   for (const module of modules) client.registerModule(module);

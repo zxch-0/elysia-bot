@@ -6,63 +6,101 @@ import { buttonRows, paginationRow } from '../../ui/components';
 import { CATEGORIES, categoryMeta } from '../categories';
 import { chunk } from '../../utils/format';
 
-/** Commandes par catégorie, mise en page en pages de 2 catégories. */
-function groupCommands(client: ElysiaClient) {
-  return CATEGORIES.map((category) => ({
-    meta: category,
-    commands: [...client.commands.values()]
+/** Taille maximale d'un champ d'embed Discord. */
+const FIELD_LIMIT = 1024;
+/** Nombre de commandes affichées par bloc avant découpage. */
+const COMMANDS_PER_BLOCK = 12;
+/** Nombre de blocs affichés par page. */
+const BLOCKS_PER_PAGE = 2;
+
+export interface HelpSection {
+  name: string;
+  value: string;
+  category: string;
+}
+
+/**
+ * Découpe le catalogue en blocs compatibles avec les limites de Discord :
+ * une catégorie très fournie occupe plusieurs blocs (et donc plusieurs pages)
+ * au lieu d'être tronquée.
+ */
+export function buildHelpSections(client: ElysiaClient): HelpSection[] {
+  const sections: HelpSection[] = [];
+
+  for (const category of CATEGORIES) {
+    const commands = [...client.commands.values()]
       .filter((command) => command.category === category.id)
-      .sort((a, b) => a.data.name.localeCompare(b.data.name)),
-  })).filter((group) => group.commands.length > 0);
+      .sort((a, b) => a.data.name.localeCompare(b.data.name));
+    if (commands.length === 0) continue;
+
+    for (const [index, group] of chunk(commands, COMMANDS_PER_BLOCK).entries()) {
+      const total = Math.ceil(commands.length / COMMANDS_PER_BLOCK);
+      sections.push({
+        name: `${category.emoji} ${category.label}${total > 1 ? ` (${index + 1}/${total})` : ''}`,
+        value: group
+          .map((command) => {
+            const summary = command.summary ?? command.data.description ?? 'Commande';
+            const usage = command.usage?.[0] ? `\n   ↳ ${command.usage[0]}` : '';
+            return `**/${command.data.name}** — ${summary}${usage}`;
+          })
+          .join('\n')
+          .slice(0, FIELD_LIMIT),
+        category: category.id,
+      });
+    }
+  }
+
+  return sections;
+}
+
+export function helpPages(client: ElysiaClient): HelpSection[][] {
+  const pages = chunk(buildHelpSections(client), BLOCKS_PER_PAGE).map((page) => page.slice(0, BLOCKS_PER_PAGE));
+  return pages.length > 0 ? pages : [[]];
 }
 
 export function helpTotalPages(client: ElysiaClient): number {
-  return Math.max(1, chunk(groupCommands(client), 2).length);
+  return Math.max(1, helpPages(client).length);
+}
+
+/** Numéro de page où démarre une catégorie donnée. */
+export function helpPageOfCategory(client: ElysiaClient, category: string): number {
+  const index = buildHelpSections(client).findIndex((section) => section.category === category);
+  return index >= 0 ? Math.floor(index / BLOCKS_PER_PAGE) : 0;
 }
 
 export function buildHelpEmbed(client: ElysiaClient, page = 0) {
-  const pages = chunk(groupCommands(client), 2);
+  const pages = helpPages(client);
   const current = pages[Math.min(Math.max(page, 0), pages.length - 1)] ?? [];
 
   const embed = baseEmbed({
     title: '💜 Elysia — centre d’aide',
     description: [
-      `Bot tout-en-un : **modération**, **giveaways**, **panneaux de rôles** et **mini-jeux**.`,
-      `Préfixe : commandes slash uniquement — tape \`/\` puis le nom d’une commande.`,
+      'Bot tout-en-un : **modération**, **giveaways**, **panneaux de rôles**, **communauté**, **mini-jeux** et **outils**.',
+      'Tapez `/` puis le nom d’une commande — tout est en slash-command.',
       '',
       `**Commandes disponibles :** ${client.commands.size}`,
       `**Serveurs :** ${client.guilds.cache.size}`,
     ].join('\n'),
     color: THEME.colors.primary,
     thumbnail: client.user?.displayAvatarURL({ size: 256 }),
-    footer: `Page ${page + 1}/${Math.max(pages.length, 1)} • Elysia v1.0.0`,
+    footer: `Page ${Math.min(page, pages.length - 1) + 1}/${pages.length} • Elysia v1.0.0`,
   });
 
-  for (const group of current) {
-    embed.addFields({
-      name: `${group.meta.emoji} ${group.meta.label}`,
-      value: group.commands
-        .map((command) => {
-          const summary = command.summary ?? command.data.description ?? 'Commande';
-          const usage = command.usage?.[0] ? `\n   ↳ ${command.usage[0]}` : '';
-          return `**/${command.data.name}** — ${summary}${usage}`;
-        })
-        .join('\n')
-        .slice(0, 1024),
-    });
+  for (const section of current) {
+    embed.addFields({ name: section.name.slice(0, 256), value: section.value || '*aucune commande*' });
   }
 
-  embed.addFields({
-    name: '🚀 Démarrage rapide',
-    value: [
-      '`/config salut` — vérifier les permissions',
-      '`/rolepanel creer` — panneau de rôles avec boutons & image',
-      '`/giveaway creer` — concours réservé aux admins',
-      '`/ban`, `/mute`, `/warn`, `/purge` — modération complète',
-      '`/jeu liste` — mini-jeux (IA, duels, quiz) et classement',
-    ].join('\n'),
-  });
+  const quickStart = [
+    '`/config convivialite` — tout configurer en une commande',
+    '`/config salut` — vérifier les permissions et salons',
+    '`/rolepanel creer` — panneau de rôles avec boutons & image',
+    '`/giveaway creer` — concours réservé aux admins',
+    '`/ban`, `/mute`, `/warn`, `/purge` — modération complète',
+    '`/sondage`, `/suggestion`, `/niveau` — animation de communauté',
+    '`/jeu liste` — mini-jeux (IA, duels, quiz) et classement',
+  ].join('\n');
 
+  if (page === 0) embed.addFields({ name: '🚀 Démarrage rapide', value: quickStart });
   return embed;
 }
 
@@ -86,14 +124,7 @@ const helpCommand: Command = {
     const client = ctx.client as ElysiaClient;
     const category = ctx.interaction.options.getString('categorie');
     const totalPages = helpTotalPages(client);
-
-    // Page correspondant à la catégorie demandée.
-    let page = 0;
-    if (category) {
-      const groups = groupCommands(client);
-      const index = groups.findIndex((group) => group.meta.id === category);
-      page = index >= 0 ? Math.floor(index / 2) : 0;
-    }
+    const page = category ? helpPageOfCategory(client, category) : 0;
 
     const embed = buildHelpEmbed(client, page);
     if (category) {
@@ -105,8 +136,8 @@ const helpCommand: Command = {
     const rows = [paginationRow({ prefix: 'help', page, totalPages })];
     rows.push(
       ...buttonRows([
-        { id: 'help:noop:0', label: 'Support', emoji: '💜', style: 'secondary', disabled: true },
-        { id: 'help:noop:1', label: 'Documentation : README.md', emoji: '📚', style: 'secondary', disabled: true },
+        { id: 'help:noop:0', label: 'Documentation : README.md', emoji: '📚', style: 'secondary', disabled: true },
+        { id: 'help:noop:1', label: 'Référence : docs/COMMANDES.md', emoji: '🗂️', style: 'secondary', disabled: true },
       ]),
     );
 

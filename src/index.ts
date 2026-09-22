@@ -78,7 +78,7 @@ async function main(): Promise<void> {
 
   if (config.dryRun) {
     // Mode démonstration : aucune connexion Discord, idéal pour valider un déploiement.
-    await runDryRunDemo();
+    await runDryRunDemo(client);
     log.warn('Mode DRY_RUN actif : le bot ne se connecte pas à Discord (retirez DRY_RUN pour l’activer).');
     return;
   }
@@ -99,8 +99,13 @@ async function main(): Promise<void> {
     if (!publishAttempted) {
       publishAttempted = true;
       publishCommands(client!)
-        .then((count) => {
-          log.success(`✅ ${count} slash-commands publiées / synchronisées avec Discord.`);
+        .then((report) => {
+          const scope = report.scope === 'guild' ? 'serveur de développement' : 'global';
+          log.success(`✅ ${report.published} slash-commands publiées / synchronisées avec Discord (portée : ${scope}).`);
+          if (report.cleaned.global > 0) log.info(`🧹 ${report.cleaned.global} commande(s) globale(s) retirée(s) pour éviter les doublons.`);
+          for (const guild of report.cleaned.guilds) {
+            log.info(`🧹 ${guild.removed} commande(s) retirée(s) sur ${guild.guildId} pour éviter les doublons.`);
+          }
         })
         .catch((error) => {
           log.error('Publication des commandes impossible', error as Error);

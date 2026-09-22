@@ -2,8 +2,13 @@
  * Fuzzing des mini-jeux — joue des milliers de parties aléatoires à travers
  * le vrai module d'interaction (`g:*`) avec de fausses interactions Discord.
  *
- *   npm run fuzz:games            (≈ 20 s)
- *   FUZZ_ROUNDS=200 npm run fuzz:games
+ *   npm run fuzz:games                    (≈ 1 min : 3 manches par scénario)
+ *   FUZZ_ROUNDS=25 npm run fuzz:games     (≈ 9 min, passage intensif)
+ *   FUZZ_ROUNDS=200 FUZZ_SEED=42 npm run fuzz:games
+ *
+ * L'avancement s'affiche scénario par scénario : le résumé final (et le code
+ * de sortie) n'arrivent qu'à la toute fin, ne croyez donc pas à un blocage
+ * tant que la ligne « Fuzzing des mini-jeux » n'est pas affichée.
  *
  * Invariants vérifiés à chaque clic :
  *   • aucune exception ne remonte du module ;
@@ -23,7 +28,9 @@ process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), 'elysia-fuzz-'));
 process.env.DRY_RUN = '1';
 process.env.LOG_LEVEL = 'error';
 
-const ROUNDS = Math.max(1, Number.parseInt(process.env.FUZZ_ROUNDS ?? '60', 10) || 60);
+// 3 manches ≈ 1 minute (chaque manche fait jouer 17 scénarios). Pour un
+// passage intensif : `FUZZ_ROUNDS=60 npm run fuzz:games`.
+const ROUNDS = Math.max(1, Number.parseInt(process.env.FUZZ_ROUNDS ?? '3', 10) || 3);
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
 const BOLD = '\u001b[1m';
@@ -296,6 +303,8 @@ function createInteraction(options: FakeInteractionOptions): FakeInteraction {
 // ── Scénario principal ───────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log(`${BOLD}🎮 Fuzzing des mini-jeux — ${ROUNDS} manche(s) par scénario (17 scénarios)…${RESET}`);
   const { db } = await import('../src/core/database');
   await db.init();
   const { gameService } = await import('../src/services/gameService');
@@ -548,9 +557,12 @@ async function main(): Promise<void> {
   const perGame: Record<string, { sessions: number; clicks: number; finished: number }> = {};
   const started = Date.now();
 
-  for (const factory of factories) {
+  const totalFactories = factories.length;
+  for (const [factoryIndex, factory] of factories.entries()) {
     const stats = { sessions: 0, clicks: 0, finished: 0 };
     perGame[factory.name] = stats;
+    // eslint-disable-next-line no-console
+    console.log(`  ⏳ [${factoryIndex + 1}/${totalFactories}] ${factory.name}…`);
     for (let round = 0; round < ROUNDS; round += 1) {
       await expireEverything();
       const session = factory.create();

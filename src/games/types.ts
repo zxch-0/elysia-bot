@@ -101,3 +101,23 @@ export interface GameRecord {
 export function emptyRecord(): GameRecord {
   return { played: 0, wins: 0, losses: 0, draws: 0, points: 0, best: null, streak: 0, bestStreak: 0 };
 }
+
+/**
+ * Fusionne les statistiques de plusieurs jeux en un bilan « toutes catégories »
+ * (classement général du site intégré).
+ * `best` reste indéfini entre jeux (« plus petit » vs « plus grand est
+ * meilleur ») et vaut donc `null` ; les séries conservent le maximum.
+ */
+export function mergeRecords(records: GameRecord[]): GameRecord {
+  const merged = emptyRecord();
+  for (const record of records) {
+    merged.played += record.played;
+    merged.wins += record.wins;
+    merged.losses += record.losses;
+    merged.draws += record.draws;
+    merged.points += record.points;
+    merged.streak = Math.max(merged.streak, record.streak);
+    merged.bestStreak = Math.max(merged.bestStreak, record.bestStreak);
+  }
+  return merged;
+}

@@ -41,6 +41,23 @@
 - `/embed creer` : **assistant complet** (modale → aperçu privé → choix des rôles → publication), couleurs, pied de page, style de chaque bouton.
 - Réparation/publication en un clic (`/rolepanel publier`), diagnostics automatiques (rôle trop haut, salon supprimé…), statistiques par rôle.
 
+### 🎉 Communauté & animation
+- **Sondages** : 2 à 10 choix, vote multiple, anonyme, durée (`2j`), clôture automatique avec annonce du gagnant, résultats en direct.
+- **Suggestions** : salon dédié, fil de discussion automatique, votes 👍/👎, statuts `acceptée / refusée / archivée` (staff), classement des meilleures idées.
+- **Anniversaires** : chacun enregistre sa date (`/anniversaire definir`), le bot annonce le jour J (fuseau `BIRTHDAY_TIMEZONE`) et liste les prochains.
+- **Comptes à rebours** : sortie de jeu, tournoi, vacances… avec boutons **⏱️ Temps restant** et **🔔 Me prévenir** (rappel privé avant l'échéance) et mention du rôle le jour J.
+- **Niveaux & XP** : gain par message, classement, courbe `100 × niveau²`, annonces de montée et **rôles automatiques par palier**.
+- **Tirages au sort** : `/tirage` (filtres par rôle et ancienneté) pour départager un salon sans passer par un giveaway.
+
+### ✨ Utilitaires du quotidien
+- `/profil` `/avatar` `/serveur` `/roles` `/emojis` `/membres` `/invitations` — fiches et inventaires du serveur, avec diagnostics.
+- `/snipe` (dernier message supprimé ou modifié), `/rappel` (rappels avec snooze), `/heure` (25 villes), `/meteo` (Open-Meteo, sans clé).
+- `/calculer` (`sqrt(144) + 2^10`, `15% de 240`), `/convertir` (45+ unités), `/motdepasse` (entropie estimée), `/code` (Base64, morse, SHA-256…).
+- `/note`, `/bannissements`, `/vocal` côté modération : notes internes du staff, registre exportable des bans, outils vocaux.
+
+### 🤪 Divertissement
+`/des` (`2d6+3`), `/8ball`, `/citation`, `/blague` (chute cachée derrière un bouton), `/pile-ou-face` (séries jusqu'à 50 lancers), `/duel` (défis de dés avec gage, boutons Accepter/Refuser, mort subite et revanche).
+
 ### 🎮 Mini-jeux (10 jeux, classement par serveur)
 - **Morpion** et **Puissance 4** contre un membre, en partie ouverte ou contre l'IA (minimax imbattable, alpha-bêta à 4 niveaux avec profondeur itérative).
 - **Pierre-Feuille-Ciseaux** en plusieurs manches (variante Lézard-Spock), choix simultanés et secrets.
@@ -55,7 +72,7 @@
 - `/config salut` : **diagnostic** des permissions, salons et hiérarchie des rôles.
 - Logs séparés : modération, messages (suppression/édition), membres (arrivée/départ).
 - Rôles automatiques à l'arrivée, messages de bienvenue/départ personnalisables (`{mention}`, `{server}`, `{membercount}`…).
-- **Serveur web intégré** : `/health` (UptimeRobot), `/api/stats` (JSON), `/metrics` (Prometheus) et un **tableau de bord** HTML autonome.
+- **Site web intégré (5 pages)** : tableau de bord, **catalogue des commandes**, **classements des mini-jeux**, **communauté** (niveaux, suggestions, sondages, anniversaires) et **données internes** (cases, notes du staff, journaux) — plus `/health` (UptimeRobot), une **API JSON** complète et `/metrics` (Prometheus). Interface 100 % autonome (aucune ressource externe), protégeable par `DASHBOARD_TOKEN`.
 - **Base JSON persistante** (aucun MongoDB/Postgres à installer), écriture atomique, sauvegarde à l'arrêt.
 - Prêt pour Render : `render.yaml`, `Dockerfile`, CI GitHub Actions, **auto-ping** intégré.
 
@@ -84,8 +101,8 @@ npm run dev          # mode développement (rechargement automatique)
 npm run build && npm start
 ```
 
-> 💡 **Sans token ?** Testez le tableau de bord et la persistance avec :
-> `DRY_RUN=1 npm run preview` → ouvrez http://localhost:3000
+> 💡 **Sans token ?** Testez le site et la persistance avec :
+> `DRY_RUN=1 npm run preview` → ouvrez http://localhost:3000 (`/`, `/commandes`, `/jeux`, `/communaute`, `/donnees`)
 
 ### Où trouver `DISCORD_TOKEN` et `CLIENT_ID` ?
 
@@ -117,6 +134,9 @@ Activez le mode développeur Discord (*Paramètres → Avancés → Mode dévelo
 | `SELF_PING_URL` | — | — | URL publique du service pour l'auto-ping interne (ex. `https://elysia-bot.onrender.com`) |
 | `SELF_PING_INTERVAL` | — | `14` | Intervalle de l'auto-ping en minutes (`0` = désactivé) |
 | `DRY_RUN` | — | `0` | `1` = démarre sans se connecter à Discord (test de déploiement) |
+| `COMMANDS_SCOPE` | — | `auto` | Portée des slash-commands : `auto`, `guild`, `global` ou `both`. `auto` = serveur de dev si `DEV_GUILD_ID` est défini, sinon global — **une seule portée à la fois** pour éviter les commandes en double |
+| `BIRTHDAY_TIMEZONE` | — | `Europe/Paris` | Fuseau utilisé pour déterminer le jour des annonces d'anniversaires |
+| `DASHBOARD_TOKEN` | — | — | Jeton protégeant la page `/donnees` et les routes `/api/cases`, `/api/notes`, `/api/reminders`, `/api/logs` (vide = accès libre) |
 
 ---
 
@@ -138,15 +158,19 @@ Activez le mode développeur Discord (*Paramètres → Avancés → Mode dévelo
 
 Liste complète et détaillée : **[docs/COMMANDES.md](docs/COMMANDES.md)**
 
+**52 commandes** au total (catégories affichées par `/help`, consultables avec `/help categorie:…`).
+
 | Catégorie | Commandes |
 |---|---|
-| 🛡️ Modération | `/ban` `/kick` `/mute` `/unmute` `/warn` `/sanctions` `/unban` `/cases` `/purge` `/lock` `/slowmode` |
+| 🛡️ Modération | `/ban` `/kick` `/mute` `/unmute` `/warn` `/sanctions` `/unban` `/cases` `/purge` `/lock` `/slowmode` `/note` `/bannissements` `/vocal` |
 | 🎁 Giveaways | `/giveaway` (`creer`, `terminer`, `relancer`, `liste`, `stats`, `supprimer`) |
 | 🎭 Rôles & embeds | `/rolepanel` `/embed` `/role` |
+| 🎉 Communauté & animation | `/sondage` `/suggestion` `/anniversaire` `/compte-a-rebours` `/niveau` `/tirage` |
 | 🛠️ Configuration | `/config` `/autorole` |
-| ✨ Utilitaires | `/help` `/bot-stats` `/invite` |
+| ✨ Utilitaires | `/help` `/bot-stats` `/invite` `/profil` `/avatar` `/serveur` `/roles` `/emojis` `/membres` `/invitations` `/snipe` `/rappel` `/heure` `/meteo` `/calculer` `/convertir` `/motdepasse` `/code` |
 | 🎮 Mini-jeux | `/jeu` (`morpion`, `puissance4`, `pfc`, `memory`, `pendu`, `motus`, `quiz`, `demineur`, `2048`, `blackjack`, `stats`, `classement`, `liste`) |
-| 👑 Propriétaire | `/owner` (`statut`, `serveurs`, `quitter`, `diffuser`, `recharger`, `activite`, `nettoyer`) |
+| 🤪 Divertissement | `/des` `/8ball` `/citation` `/blague` `/pile-ou-face` `/duel` |
+| 👑 Propriétaire | `/owner` (`statut`, `serveurs`, `quitter`, `diffuser`, `recharger`, `commandes`, `activite`, `nettoyer`) |
 
 ---
 
@@ -192,21 +216,24 @@ elysia-bot/
 ├── src/
 │   ├── index.ts                 # Entrée : base, client, serveur web, planificateur
 │   ├── core/                    # Client Discord, config, base JSON, erreurs, loaders
-│   ├── commands/                # 22 slash-commands classées par catégorie
-│   │   ├── moderation/          #   ban, kick, mute, warn, purge, lock…
+│   ├── commands/                # 52 slash-commands classées par catégorie
+│   │   ├── moderation/          #   ban, kick, mute, warn, purge, lock, note, vocal…
 │   │   ├── giveaways/           #   giveaway
 │   │   ├── roles/               #   rolepanel, embed, role
+│   │   ├── community/           #   sondage, suggestion, anniversaire, niveau…
 │   │   ├── config/              #   config, autorole
-│   │   ├── utility/             #   help, bot-stats, invite
+│   │   ├── utility/             #   help, profil, rappel, calculer, convertir…
 │   │   ├── games/               #   jeu (10 mini-jeux + stats + classement)
+│   │   ├── fun/                 #   des, 8ball, citation, blague, duel…
 │   │   └── owner/               #   owner
 │   ├── games/                   # Mini-jeux : moteurs purs (engine/), rendu Discord (ui/), contenu (content/)
 │   ├── modules/                 # Interactions : boutons, menus, modales, confirmations, mini-jeux
-│   ├── services/                # Modération, cases, giveaways, panneaux, logs, jeux, planificateur
+│   ├── fun/                     # Contenus de divertissement (citations, blagues, duels)
+│   ├── services/                # Modération, cases, giveaways, panneaux, logs, jeux, XP, rappels, sondages, planificateur
 │   ├── ui/                      # Embeds, composants, thème, images
-│   ├── utils/                   # Durées, formatage, aléatoire, permissions
-│   └── web/                     # Serveur HTTP, tableau de bord, auto-ping, dry-run
-├── scripts/                     # validate.ts, deploy-commands.ts
+│   ├── utils/                   # Durées, formatage, aléatoire, permissions, calcul, unités, dés, codecs, fuseaux
+│   └── web/                     # Serveur HTTP : pages HTML (pages.ts/ui.ts), API JSON, auto-ping, dry-run
+├── scripts/                     # validate.ts, deploy-commands.ts, self-test.ts, games-fuzz.ts
 ├── docs/                        # Tutoriels (Render + UptimeRobot, commandes, dépannage)
 ├── data/                        # Base JSON (générée, ignorée par Git)
 ├── assets/panels/               # Images d'illustration (générées, ignorées par Git)
@@ -214,15 +241,42 @@ elysia-bot/
 └── Dockerfile                   # Déploiement Docker / VPS / Koyeb / Fly.io
 ```
 
-### Routes du serveur web
+### Site web intégré
+
+Cinq pages HTML autonomes (aucune CDN, aucun build front) accessibles dès que le bot tourne :
+
+| Page | Contenu |
+|---|---|
+| `/` | **Tableau de bord** : latence, uptime, mémoire, serveurs, giveaways, panneaux, XP, suggestions, sondages, cases, planificateur interne et volumétrie de la base JSON |
+| `/commandes` | **Catalogue des 52 commandes** : recherche, filtre par catégorie, options, exemples d'usage, permissions, cooldowns |
+| `/jeux` | **Classements des mini-jeux** : top par serveur, victoires/défaites/nuls, meilleures séries, catalogue des 10 jeux |
+| `/communaute` | **Vie communautaire** : niveaux & barres de progression, suggestions et votes, sondages en cours/terminés, anniversaires, comptes à rebours |
+| `/donnees` | **Données internes** (protégé par `DASHBOARD_TOKEN`) : sanctions actives, notes du staff, journaux en direct |
+
+> 🔒 Avec `DASHBOARD_TOKEN`, la page `/donnees` reste consultable mais affiche un bouton **« Jeton du tableau de bord »** : le jeton est stocké dans le navigateur puis envoyé dans l'en-tête `x-dashboard-token`.
+
+### API JSON
 
 | Route | Rôle |
 |---|---|
-| `/` | Tableau de bord HTML (serveurs, latence, mémoire, giveaways…) |
-| `/health` | Health-check JSON — **l'endpoint à mettre dans UptimeRobot** |
-| `/api/stats` | Statistiques complètes (JSON) |
-| `/metrics` | Métriques format Prometheus |
-| `/ping` | Réponse `pong` instantanée |
+| `/health` | Health-check JSON — **l'endpoint à mettre dans UptimeRobot** (alias : `/api/health`, `/ping`, `/keepalive`) |
+| `/api` | Index de toutes les routes disponibles |
+| `/api/stats` | Statistiques complètes (Discord, services, base JSON, planificateur) |
+| `/api/commands` | Catalogue des commandes (catégories, options, usage, permissions) |
+| `/api/games` | Mini-jeux : joueurs, points, parties jouées, sessions en cours |
+| `/api/leaderboard` | Classement d'un serveur — `?guild=&game=&limit=` |
+| `/api/community` | Niveaux, suggestions, sondages, anniversaires, comptes à rebours — `?guild=&limit=` |
+| `/api/giveaways` | Concours en cours et terminés (participants, gagnants) |
+| `/api/panels` | Panneaux de rôles publiés |
+| `/api/scheduler` | Tâches planifiées (fréquence, exécutions, erreurs) |
+| `/api/cases` 🔒 | Sanctions récentes — `?guild=&limit=` |
+| `/api/notes` 🔒 | Notes du staff agrégées par membre |
+| `/api/reminders` 🔒 | Rappels en attente |
+| `/api/logs` 🔒 | 400 dernières lignes de journal (`{time, level, scope, message}`) |
+| `/metrics` | Métriques format Prometheus (`elysia_up`, `elysia_guilds`, `elysia_xp_total`…) |
+| `/robots.txt` | Exclusion des robots d'indexation sur `/api/` et `/donnees` |
+
+🔒 = exige l'en-tête `x-dashboard-token` (ou `?token=…`) quand `DASHBOARD_TOKEN` est défini.
 
 ### Scripts npm
 
@@ -233,8 +287,8 @@ elysia-bot/
 | `npm start` | Démarrage en production (utilisé par Render) |
 | `npm run typecheck` | Vérification des types sans compiler |
 | `npm run validate` | Diagnostic complet avant déploiement (token, permissions, dossiers) |
-| `npm run self-test` | Auto-test métier hors ligne (durées, base JSON, tirages, panneaux, mini-jeux, routes web) |
-| `npm run fuzz:games` | Fuzzing des mini-jeux : des milliers de clics aléatoires (joueurs, intrus, clics tardifs) sur un faux Discord, vérification des limites de l'API et des invariants (`FUZZ_ROUNDS`, `FUZZ_SEED`) |
+| `npm run self-test` | Auto-test métier hors ligne (308 contrôles : durées, base JSON, calcul, unités, dés, codecs, services, mini-jeux, aide, pages et API du site) |
+| `npm run fuzz:games` | Fuzzing des mini-jeux : des millions de contrôles sur un faux Discord, limites de l'API et invariants (≈ 1 min ; `FUZZ_ROUNDS=25` pour un passage intensif, `FUZZ_SEED` pour rejouer un échec) |
 | `npm run deploy:commands` | Publie/rafraîchit les slash-commands (`-- --clear` pour tout réinitialiser) |
 | `npm run preview` | Mode démonstration : tableau de bord sans connexion Discord (`DRY_RUN=1`) |
 
@@ -247,6 +301,7 @@ elysia-bot/
 | `DISCORD_TOKEN manquant` | Créez `.env` à partir de `.env.example` et collez le token |
 | `Invalid token` / `401` | Token révoqué ou mal copié → **Reset Token** puis `npm run validate` |
 | Les commandes n'apparaissent pas | Renseignez `DEV_GUILD_ID` (publication instantanée) ou attendez jusqu'à 1 h ; CTRL+R sur Discord |
+| Les commandes apparaissent **en double** | Vous êtes en `COMMANDS_SCOPE=both` : passez à `auto` (une seule portée), puis lancez `/owner commandes` ou redémarrez le bot — l'autre portée est nettoyée automatiquement |
 | `Missing Permissions` | Le rôle du bot doit être **au-dessus** des rôles gérés + permission manquante |
 | Les panneaux ne donnent pas les rôles | `/config salut` ou `/rolepanel apercu` → diagnostics automatiques |
 | Le bot s'endort sur Render | Configurez UptimeRobot sur `/health` (voir tutoriel) |

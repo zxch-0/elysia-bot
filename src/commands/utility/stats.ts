@@ -16,6 +16,7 @@ const statsCommand: Command = {
     .setDMPermission(false),
   category: 'utility',
   summary: 'État de santé du bot',
+  usage: ['/bot-stats'],
   cooldown: 5,
   publicReply: false,
   async run(ctx: CommandContext) {

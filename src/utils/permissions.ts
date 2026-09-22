@@ -94,6 +94,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   ManageChannels: 'Gérer les salons',
   ManageMessages: 'Gérer les messages',
   ManageGuild: 'Gérer le serveur',
+  MoveMembers: 'Déplacer des membres (vocal)',
   Administrator: 'Administrateur',
   ViewChannel: 'Voir les salons',
   SendMessages: 'Envoyer des messages',

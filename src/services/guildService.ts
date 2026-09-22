@@ -21,6 +21,12 @@ export interface GuildSettings extends Document {
     welcome: boolean;
     autoRole: boolean;
     games: boolean;
+    /** Système d'XP / niveaux (`/niveau`). */
+    levels: boolean;
+    /** Annonces d'anniversaires (`/anniversaire`). */
+    birthdays: boolean;
+    /** Boîte à suggestions (`/suggestion`). */
+    suggestions: boolean;
   };
   channels: {
     modLog?: string | null;
@@ -29,6 +35,12 @@ export interface GuildSettings extends Document {
     welcome?: string | null;
     goodbye?: string | null;
     giveawayAnnounce?: string | null;
+    /** Salon des annonces d'anniversaires. */
+    birthday?: string | null;
+    /** Salon des montées de niveau. */
+    levelUp?: string | null;
+    /** Salon des suggestions. */
+    suggestions?: string | null;
   };
   roles: {
     mute?: string | null;
@@ -68,9 +80,48 @@ export interface GuildSettings extends Document {
   counters: {
     caseId: number;
     giveawayId: number;
+    suggestionId: number;
+    countdownId: number;
+    reminderId: number;
+    pollId: number;
+  };
+  /** Récompenses de rôle par niveau (système d'XP). */
+  levels: LevelSettings;
+  /** Réglages des modules communautaires (suggestions, anniversaires). */
+  community: {
+    suggestions: {
+      /** Publier les suggestions sans nom d'auteur. */
+      anonymousByDefault: boolean;
+      /** Ouvrir un fil de discussion sous chaque suggestion. */
+      createThreads: boolean;
+    };
+    birthdays: {
+      /** Annoncer les anniversaires du jour. */
+      announce: boolean;
+    };
   };
   createdAt: number;
   updatedAt: number;
+}
+
+/** Réglages du système d'XP / niveaux. */
+export interface LevelSettings {
+  enabled: boolean;
+  /** Gain d'XP minimum par message. */
+  xpMin: number;
+  /** Gain d'XP maximum par message. */
+  xpMax: number;
+  /** Délai minimum entre deux gains d'XP (ms). */
+  cooldownMs: number;
+  /** Annoncer les montées de niveau. */
+  announce: boolean;
+  /** Rôles attribués automatiquement à partir d'un niveau. */
+  rewards: LevelReward[];
+}
+
+export interface LevelReward {
+  level: number;
+  roleId: string;
 }
 
 export function defaultGuildSettings(guildId: string): GuildSettings {
@@ -86,6 +137,9 @@ export function defaultGuildSettings(guildId: string): GuildSettings {
       welcome: false,
       autoRole: false,
       games: true,
+      levels: true,
+      birthdays: true,
+      suggestions: true,
     },
     channels: {},
     roles: {
@@ -126,6 +180,27 @@ export function defaultGuildSettings(guildId: string): GuildSettings {
     counters: {
       caseId: 0,
       giveawayId: 0,
+      suggestionId: 0,
+      countdownId: 0,
+      reminderId: 0,
+      pollId: 0,
+    },
+    levels: {
+      enabled: true,
+      xpMin: 15,
+      xpMax: 25,
+      cooldownMs: 60_000,
+      announce: true,
+      rewards: [],
+    },
+    community: {
+      suggestions: {
+        anonymousByDefault: false,
+        createThreads: true,
+      },
+      birthdays: {
+        announce: true,
+      },
     },
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -210,6 +285,19 @@ export class GuildService {
     const settings = this.get(guildId);
     const next = settings.counters.giveawayId + 1;
     settings.counters.giveawayId = next;
+    settings.updatedAt = Date.now();
+    this.collection.set(settings);
+    return next;
+  }
+
+  /**
+   * Réserve le prochain numéro d'un compteur quelconque
+   * (suggestions, comptes à rebours, rappels, sondages).
+   */
+  nextCounter(guildId: string, key: keyof GuildSettings['counters']): number {
+    const settings = this.get(guildId);
+    const next = (settings.counters[key] ?? 0) + 1;
+    settings.counters[key] = next;
     settings.updatedAt = Date.now();
     this.collection.set(settings);
     return next;

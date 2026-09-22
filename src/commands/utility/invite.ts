@@ -15,6 +15,7 @@ const inviteCommand: Command = {
     .setDMPermission(false),
   category: 'utility',
   summary: 'Lien d’ajout du bot',
+  usage: ['/invite'],
   cooldown: 5,
   async run(ctx: CommandContext) {
     const client = ctx.client as import('../../core/client').ElysiaClient;

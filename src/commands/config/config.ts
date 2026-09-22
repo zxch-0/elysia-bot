@@ -18,6 +18,9 @@ const MODULE_CHOICES = [
   { name: '👋 Messages de bienvenue', value: 'welcome' },
   { name: '⚙️ Rôles automatiques', value: 'autoRole' },
   { name: '🎮 Mini-jeux', value: 'games' },
+  { name: '📈 Niveaux & XP', value: 'levels' },
+  { name: '🎂 Anniversaires', value: 'birthdays' },
+  { name: '💡 Suggestions', value: 'suggestions' },
 ] as const;
 
 /** Diagnostic de santé du serveur : permissions, salons, hiérarchie des rôles. */
@@ -76,6 +79,9 @@ export function renderConfig(settings: GuildSettings): string {
       `Logs membres : ${mentionChannel(settings.channels.memberLog)}`,
       `Bienvenue : ${mentionChannel(settings.channels.welcome)}`,
       `Départs : ${mentionChannel(settings.channels.goodbye)}`,
+      `Anniversaires : ${mentionChannel(settings.channels.birthday)}`,
+      `Montées de niveau : ${mentionChannel(settings.channels.levelUp)}`,
+      `Suggestions : ${mentionChannel(settings.channels.suggestions)}`,
     ]),
     '',
     '**🎭 Rôles**',
@@ -111,7 +117,24 @@ export function renderConfig(settings: GuildSettings): string {
       `MP aux gagnants : ${settings.giveaway.dmWinners ? 'oui' : 'non'}`,
     ]),
     '',
-    `**Compteurs :** ${humanizeNumber(settings.counters.caseId)} case(s) • ${humanizeNumber(settings.counters.giveawayId)} giveaway(s)`,
+    '',
+    '**📈 Niveaux & XP**',
+    bulletList([
+      `Module : ${settings.modules.levels && settings.levels.enabled ? '🟢 actif' : '🔴 inactif'}`,
+      `XP par message : ${settings.levels.xpMin} à ${settings.levels.xpMax}`,
+      `Délai anti-spam : ${Math.round(settings.levels.cooldownMs / 1_000)} s`,
+      `Annonces de niveau : ${settings.levels.announce ? 'oui' : 'non'}`,
+      `Rôles de récompense : ${settings.levels.rewards.length > 0 ? settings.levels.rewards.map((reward) => `niv. ${reward.level} → <@&${reward.roleId}>`).join(', ') : 'aucun'}`,
+    ]),
+    '',
+    '**🎉 Communauté**',
+    bulletList([
+      `Anniversaires annoncés : ${settings.community.birthdays.announce ? 'oui' : 'non'}`,
+      `Suggestions anonymes par défaut : ${settings.community.suggestions.anonymousByDefault ? 'oui' : 'non'}`,
+      `Fils de discussion sous les suggestions : ${settings.community.suggestions.createThreads ? 'oui' : 'non'}`,
+    ]),
+    '',
+    `**Compteurs :** ${humanizeNumber(settings.counters.caseId)} case(s) • ${humanizeNumber(settings.counters.giveawayId)} giveaway(s) • ${humanizeNumber(settings.counters.suggestionId)} suggestion(s)`,
   ].join('\n');
 }
 
@@ -153,6 +176,9 @@ const configCommand: Command = {
               { name: 'Logs membres', value: 'memberLog' },
               { name: 'Bienvenue', value: 'welcome' },
               { name: 'Départs', value: 'goodbye' },
+              { name: 'Anniversaires', value: 'birthday' },
+              { name: 'Montées de niveau', value: 'levelUp' },
+              { name: 'Suggestions', value: 'suggestions' },
             ),
         )
         .addChannelOption((option) => option.setName('salon').setDescription('Salon cible (« aucun » pour désactiver)').addChannelTypes(ChannelType.GuildText)),
@@ -261,6 +287,30 @@ const configCommand: Command = {
         .addStringOption((option) => option.setName('message').setDescription('Variables : {user} {server} {membercount}').setMaxLength(1000))
         .addBooleanOption((option) => option.setName('actif').setDescription('Activer les messages de départ')),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName('niveaux')
+        .setDescription('Règle le système d’XP et de niveaux')
+        .addBooleanOption((option) => option.setName('actif').setDescription('Activer le gain d’XP en discutant'))
+        .addBooleanOption((option) => option.setName('annonce').setDescription('Annoncer les montées de niveau'))
+        .addIntegerOption((option) => option.setName('xp_min').setDescription('XP minimum gagné par message').setMinValue(1).setMaxValue(200))
+        .addIntegerOption((option) => option.setName('xp_max').setDescription('XP maximum gagné par message').setMinValue(1).setMaxValue(300))
+        .addIntegerOption((option) => option.setName('delai').setDescription('Délai minimum entre deux gains, en secondes').setMinValue(5).setMaxValue(3_600)),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('niveau-role')
+        .setDescription('Attribue un rôle automatiquement à partir d’un niveau')
+        .addStringOption((option) =>
+          option
+            .setName('action')
+            .setDescription('Action à effectuer')
+            .setRequired(true)
+            .addChoices({ name: 'Ajouter', value: 'ajouter' }, { name: 'Retirer', value: 'retirer' }, { name: 'Vider', value: 'vider' }),
+        )
+        .addIntegerOption((option) => option.setName('niveau').setDescription('Niveau déclencheur').setMinValue(1).setMaxValue(500))
+        .addRoleOption((option) => option.setName('role').setDescription('Rôle à attribuer')),
+    )
     .addSubcommand((sub) => sub.setName('reset').setDescription('Réinitialise toute la configuration du serveur (confirmation requise)')),
   category: 'config',
   summary: 'Configuration complète du serveur',
@@ -360,7 +410,15 @@ const configCommand: Command = {
 
     // ── Salons ─────────────────────────────────────────────────────────────
     if (sub === 'salon') {
-      const type = ctx.string('type') as 'modLog' | 'messageLog' | 'memberLog' | 'welcome' | 'goodbye';
+      const type = ctx.string('type') as
+        | 'modLog'
+        | 'messageLog'
+        | 'memberLog'
+        | 'welcome'
+        | 'goodbye'
+        | 'birthday'
+        | 'levelUp'
+        | 'suggestions';
       const channel = ctx.interaction.options.getChannel('salon');
       const updated = guildService.update(ctx.guild.id, { channels: { [type]: channel?.id ?? null } } as never);
       return ctx.send(
@@ -626,6 +684,75 @@ const configCommand: Command = {
         } — configurez-le avec \`/config salon\`.`,
       });
       return ctx.send(embed);
+    }
+
+    // ── Système de niveaux ─────────────────────────────────────────────────
+    if (sub === 'niveaux') {
+      const active = ctx.interaction.options.getBoolean('actif');
+      const announce = ctx.interaction.options.getBoolean('annonce');
+      const xpMin = ctx.interaction.options.getInteger('xp_min');
+      const xpMax = ctx.interaction.options.getInteger('xp_max');
+      const delay = ctx.interaction.options.getInteger('delai');
+
+      const patch: Record<string, unknown> = {};
+      if (active !== null) patch.enabled = active;
+      if (announce !== null) patch.announce = announce;
+      if (xpMin !== null) patch.xpMin = xpMin;
+      if (xpMax !== null) patch.xpMax = xpMax;
+      if (delay !== null) patch.cooldownMs = delay * 1_000;
+      if (Object.keys(patch).length === 0) throw new UsageError('Renseignez au moins une option (`actif`, `annonce`, `xp_min`, `xp_max`, `delai`).');
+
+      const merged = { ...settings.levels, ...patch } as GuildSettings['levels'];
+      if (merged.xpMax < merged.xpMin) throw new UsageError('`xp_max` doit être supérieur ou égal à `xp_min`.');
+
+      const updated = guildService.update(ctx.guild.id, { levels: patch } as never);
+      const modules = guildService.update(ctx.guild.id, { modules: { levels: merged.enabled } } as never);
+      return ctx.send(
+        successEmbed(
+          'Système de niveaux mis à jour',
+          [
+            `**Gain d’XP :** ${updated.levels.xpMin} à ${updated.levels.xpMax} par message`,
+            `**Délai anti-spam :** ${Math.round(updated.levels.cooldownMs / 1_000)} s`,
+            `**Annonces :** ${updated.levels.announce ? 'oui' : 'non'}`,
+            `**Module :** ${modules.modules.levels ? '🟢 actif' : '🔴 inactif'}`,
+            '',
+            'Consultez le classement avec `/niveau classement`.',
+          ].join('\n'),
+        ),
+      );
+    }
+
+    if (sub === 'niveau-role') {
+      const action = ctx.string('action');
+      const current = settings.levels.rewards;
+
+      if (action === 'vider') {
+        guildService.update(ctx.guild.id, { levels: { rewards: [] } } as never);
+        return ctx.send(successEmbed('Récompenses supprimées', 'Plus aucun rôle ne sera attribué automatiquement par niveau.'));
+      }
+
+      const level = ctx.interaction.options.getInteger('niveau');
+      const role = ctx.interaction.options.getRole('role');
+      if (!level) throw new UsageError('Précisez le `niveau` déclencheur.');
+      if (!role) throw new UsageError('Précisez le `role` à attribuer.');
+
+      const next =
+        action === 'ajouter'
+          ? [...current.filter((reward) => reward.level !== level), { level, roleId: role.id }].sort((a, b) => a.level - b.level)
+          : current.filter((reward) => reward.level !== level);
+      guildService.update(ctx.guild.id, { levels: { rewards: next } } as never);
+
+      return ctx.send(
+        successEmbed(
+          action === 'ajouter' ? 'Récompense enregistrée' : 'Récompense retirée',
+          [
+            action === 'ajouter' ? `Les membres de niveau **${level}** et plus recevront ${role}.` : `Plus aucune attribution au niveau **${level}**.`,
+            '',
+            '**Récompenses :**',
+            next.length > 0 ? bulletList(next.map((reward) => `niveau ${reward.level} → <@&${reward.roleId}>`)) : '*aucune*',
+          ].join('\n'),
+        ),
+      );
     }
 
     // ── Réinitialisation ───────────────────────────────────────────────────

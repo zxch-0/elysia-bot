@@ -7,6 +7,8 @@ import { guildService } from '../services/guildService';
 import { moderationService } from '../services/moderationService';
 import { logMemberEvent, logMessageEvent, renderWelcomeTemplate, sendToLog } from '../services/logService';
 import { baseEmbed, THEME } from '../ui/embeds';
+import { snipeService } from '../services/snipeService';
+import { levelService } from '../services/levelService';
 
 const log = logger.child('events');
 
@@ -109,6 +111,9 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
   client.on(
     Events.MessageDelete,
     guard('messageDelete', async (message) => {
+      // Mémoire locale pour /snipe (avant tout filtre : un message supprimé
+      // par un modérateur doit aussi pouvoir être retrouvé).
+      if (message.guild) snipeService.recordDelete(message);
       if (!message.guild || message.author?.bot || !message.content) return;
       await logMessageEvent({
         guild: message.guild,
@@ -123,6 +128,7 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
   client.on(
     Events.MessageUpdate,
     guard('messageUpdate', async (before, after) => {
+      if (after.guild) snipeService.recordEdit(before, after);
       if (!after.guild || after.author?.bot) return;
       if (before.content === after.content) return;
       if (!before.content && !after.content) return;
@@ -134,6 +140,44 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
         content: after.content ?? '',
         before: before.content ?? '',
       });
+    }),
+  );
+
+  // ── XP / niveaux (module `/niveau`) ──────────────────────────────────────
+  client.on(
+    Events.MessageCreate,
+    guard('messageCreate', async (message) => {
+      if (!message.inGuild() || message.author.bot) return;
+
+      const settings = guildService.get(message.guildId);
+      const result = levelService.handleMessage(message, settings);
+      if (!result) return;
+
+      if (!result.levelUp) return;
+
+      const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
+      if (member && settings.levels.rewards.length > 0) {
+        await levelService.applyRewards(message.guild, member, result.entry.level, settings).catch((error) => log.warn('Récompenses de niveau', error));
+      }
+
+      if (!settings.levels.announce) return;
+
+      const target = settings.channels.levelUp ? message.guild.channels.cache.get(settings.channels.levelUp) : message.channel;
+      if (!target || !target.isTextBased() || target.isDMBased()) return;
+
+      const embed = baseEmbed({
+        title: '🎉 Montée de niveau !',
+        description: [
+          `<@${message.author.id}> passe au **niveau ${result.entry.level}** !`,
+          `XP gagné : +${result.gained} • Total : ${result.entry.xp} XP`,
+          `Prochain niveau dans ${Math.max(result.progress.needed - result.progress.into, 1)} XP.`,
+        ].join('\n'),
+        color: THEME.colors.success,
+        thumbnail: message.author.displayAvatarURL({ size: 128 }),
+        footer: 'XP gagné en discutant • /niveau voir',
+      });
+
+      await target.send({ embeds: [embed] }).catch(() => undefined);
     }),
   );
 

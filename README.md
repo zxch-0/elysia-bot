@@ -2,7 +2,7 @@
 
 # 💜 Elysia
 
-**Bot Discord tout-en-un : modération avancée, giveaways, panneaux de rôles avec images et mini-jeux avec classement.**
+**Bot Discord tout-en-un : modération avancée, giveaways, panneaux de rôles avec images, mini-jeux avec classement et économie avec blackjack.**
 
 `Node.js 20+` • `discord.js 14` • `TypeScript` • `Zéro base de données à installer`
 
@@ -63,16 +63,22 @@
 - **Pierre-Feuille-Ciseaux** en plusieurs manches (variante Lézard-Spock), choix simultanés et secrets.
 - **Quiz** multijoueur chronométré : 7 thèmes, 3 difficultés, bonus de rapidité, révélation automatique, podium.
 - **Pendu** (9 thèmes, mode coopératif pour tout le salon), **Motus** (mot de 5 lettres, façon Wordle).
-- **Démineur** (premier clic toujours sûr, mode drapeau, chrono), **2048** (annulations limitées), **Blackjack** (jetons virtuels, doubler), **Memory** (solo chrono ou duel).
+- **Démineur** (premier clic toujours sûr, mode drapeau, chrono), **2048** (annulations limitées), **Blackjack** (mises en argent réel, doubler), **Memory** (solo chrono ou duel).
 - Invitations avec **Accepter / Refuser**, revanche en un clic (nouveau défi entre membres, redémarrage immédiat contre l'IA), abandon, forfait automatique par inactivité.
 - **Statistiques persistantes** par joueur (`/jeu stats`) et **classement** général ou par jeu (`/jeu classement`). Module désactivable via `/config modules`.
+
+### 💰 Économie & argent
+- **Argent gagné en discutant** : chaque message rapporte des 🪙 (montant et anti-flood configurables), capital de départ offert aux nouveaux portefeuilles.
+- **Blackjack à mises réelles** : `/jeu blackjack` mise votre solde (`/argent voir`), blackjack payé 3:2, double possible.
+- **Commandes complètes** : `/argent` (`voir`, `classement`, `donner`, `ajouter`, `retirer`, `reinitialiser`, `config` pour les admins).
+- **Classement des fortunes** dans Discord (`/argent classement`) et sur le site intégré (onglet 💰 Économie).
 
 ### 🛠️ Configuration & infrastructure
 - `/config convivialite` : **toute la configuration en une seule commande**.
 - `/config salut` : **diagnostic** des permissions, salons et hiérarchie des rôles.
 - Logs séparés : modération, messages (suppression/édition), membres (arrivée/départ).
 - Rôles automatiques à l'arrivée, messages de bienvenue/départ personnalisables (`{mention}`, `{server}`, `{membercount}`…).
-- **Site web intégré (5 pages)** : tableau de bord, **catalogue des commandes**, **classements des mini-jeux**, **communauté** (niveaux, suggestions, sondages, anniversaires) et **données internes** (cases, notes du staff, journaux) — plus `/health` (UptimeRobot), une **API JSON** complète et `/metrics` (Prometheus). Interface 100 % autonome (aucune ressource externe), protégeable par `DASHBOARD_TOKEN`.
+- **Site web intégré (6 pages)** : tableau de bord, **catalogue des commandes**, **classements des mini-jeux**, **classement d'argent** (onglet 💰 Économie), **communauté** (niveaux, suggestions, sondages, anniversaires) et **données internes** (cases, notes du staff, journaux) — plus `/health` (UptimeRobot), une **API JSON** complète et `/metrics` (Prometheus). Interface 100 % autonome (aucune ressource externe), protégeable par `DASHBOARD_TOKEN`.
 - **Base JSON persistante** (aucun MongoDB/Postgres à installer), écriture atomique, sauvegarde à l'arrêt.
 - Prêt pour Render : `render.yaml`, `Dockerfile`, CI GitHub Actions, **auto-ping** intégré.
 
@@ -158,7 +164,7 @@ Activez le mode développeur Discord (*Paramètres → Avancés → Mode dévelo
 
 Liste complète et détaillée : **[docs/COMMANDES.md](docs/COMMANDES.md)**
 
-**52 commandes** au total (catégories affichées par `/help`, consultables avec `/help categorie:…`).
+**53 commandes** au total (catégories affichées par `/help`, consultables avec `/help categorie:…`).
 
 | Catégorie | Commandes |
 |---|---|
@@ -166,6 +172,7 @@ Liste complète et détaillée : **[docs/COMMANDES.md](docs/COMMANDES.md)**
 | 🎁 Giveaways | `/giveaway` (`creer`, `terminer`, `relancer`, `liste`, `stats`, `supprimer`) |
 | 🎭 Rôles & embeds | `/rolepanel` `/embed` `/role` |
 | 🎉 Communauté & animation | `/sondage` `/suggestion` `/anniversaire` `/compte-a-rebours` `/niveau` `/tirage` |
+| 💰 Économie | `/argent` (`voir`, `classement`, `donner`, `ajouter`, `retirer`, `reinitialiser`, `config`) |
 | 🛠️ Configuration | `/config` `/autorole` |
 | ✨ Utilitaires | `/help` `/bot-stats` `/invite` `/profil` `/avatar` `/serveur` `/roles` `/emojis` `/membres` `/invitations` `/snipe` `/rappel` `/heure` `/meteo` `/calculer` `/convertir` `/motdepasse` `/code` |
 | 🎮 Mini-jeux | `/jeu` (`morpion`, `puissance4`, `pfc`, `memory`, `pendu`, `motus`, `quiz`, `demineur`, `2048`, `blackjack`, `stats`, `classement`, `liste`) |
@@ -243,13 +250,14 @@ elysia-bot/
 
 ### Site web intégré
 
-Cinq pages HTML autonomes (aucune CDN, aucun build front) accessibles dès que le bot tourne :
+Six pages HTML autonomes (aucune CDN, aucun build front) accessibles dès que le bot tourne :
 
 | Page | Contenu |
 |---|---|
 | `/` | **Tableau de bord** : latence, uptime, mémoire, serveurs, giveaways, panneaux, XP, suggestions, sondages, cases, planificateur interne et volumétrie de la base JSON |
-| `/commandes` | **Catalogue des 52 commandes** : recherche, filtre par catégorie, options, exemples d'usage, permissions, cooldowns |
+| `/commandes` | **Catalogue des commandes** : recherche, filtre par catégorie, options, exemples d'usage, permissions, cooldowns |
 | `/jeux` | **Classements des mini-jeux** : top par serveur, victoires/défaites/nuls, meilleures séries, catalogue des 10 jeux |
+| `/economie` | **Classement des fortunes** 💰 : argent en circulation, top des portefeuilles, gagné en discutant, bilan casino, volume misé |
 | `/communaute` | **Vie communautaire** : niveaux & barres de progression, suggestions et votes, sondages en cours/terminés, anniversaires, comptes à rebours |
 | `/donnees` | **Données internes** (protégé par `DASHBOARD_TOKEN`) : sanctions actives, notes du staff, journaux en direct |
 
@@ -264,7 +272,8 @@ Cinq pages HTML autonomes (aucune CDN, aucun build front) accessibles dès que l
 | `/api/stats` | Statistiques complètes (Discord, services, base JSON, planificateur) |
 | `/api/commands` | Catalogue des commandes (catégories, options, usage, permissions) |
 | `/api/games` | Mini-jeux : joueurs, points, parties jouées, sessions en cours |
-| `/api/leaderboard` | Classement d'un serveur — `?guild=&game=&limit=` |
+| `/api/leaderboard` | Classement des mini-jeux d'un serveur — `?guild=&game=&limit=` |
+| `/api/economy` | Classement des fortunes et agrégats économiques — `?guild=&limit=` |
 | `/api/community` | Niveaux, suggestions, sondages, anniversaires, comptes à rebours — `?guild=&limit=` |
 | `/api/giveaways` | Concours en cours et terminés (participants, gagnants) |
 | `/api/panels` | Panneaux de rôles publiés |
@@ -273,7 +282,7 @@ Cinq pages HTML autonomes (aucune CDN, aucun build front) accessibles dès que l
 | `/api/notes` 🔒 | Notes du staff agrégées par membre |
 | `/api/reminders` 🔒 | Rappels en attente |
 | `/api/logs` 🔒 | 400 dernières lignes de journal (`{time, level, scope, message}`) |
-| `/metrics` | Métriques format Prometheus (`elysia_up`, `elysia_guilds`, `elysia_xp_total`…) |
+| `/metrics` | Métriques format Prometheus (`elysia_up`, `elysia_guilds`, `elysia_xp_total`, `elysia_money_total`…) |
 | `/robots.txt` | Exclusion des robots d'indexation sur `/api/` et `/donnees` |
 
 🔒 = exige l'en-tête `x-dashboard-token` (ou `?token=…`) quand `DASHBOARD_TOKEN` est défini.

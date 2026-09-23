@@ -511,8 +511,8 @@ async function main(): Promise<void> {
         break;
       }
       case 'blackjack': {
-        assert(state.chips >= 0 && state.peak >= state.chips, `${where} : jetons négatifs ou pic incohérent`);
         assert(state.hands === state.won + state.lost + state.pushed, `${where} : mains ≠ V+D+N`);
+        assert(Number.isFinite(state.net) && state.peak >= state.net, `${where} : gain net ou pic incohérent`);
         if (state.hand) assert(state.hand.player.length >= 2 && state.hand.dealer.length >= 2, `${where} : main incomplète`);
         break;
       }

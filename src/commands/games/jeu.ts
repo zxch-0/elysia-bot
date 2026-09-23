@@ -24,6 +24,7 @@ import type { RpsVariant } from '../../games/engine/rps';
 import { gameService } from '../../services/gameService';
 import { baseEmbed, THEME } from '../../ui/embeds';
 import { humanizeNumber } from '../../utils/format';
+import { CURRENCY_EMOJI } from '../../services/economyService';
 
 registerGames();
 
@@ -44,7 +45,7 @@ const BEST_FORMAT: Partial<Record<GameId, (value: number) => string>> = {
   quiz: (value) => `record : ${value} pts en un quiz`,
   demineur: (value) => `record : ${value} s`,
   '2048': (value) => `record : ${humanizeNumber(value)} pts`,
-  blackjack: (value) => `pic : ${value} jetons`,
+  blackjack: (value) => `meilleur bilan : ${value > 0 ? '+' : ''}${humanizeNumber(value)} ${CURRENCY_EMOJI}`,
   memory: (value) => `record : ${value} coup(s)`,
 };
 
@@ -312,7 +313,7 @@ const command: Command = {
         .addIntegerOption((option) => option.setName('mines').setDescription('Nombre de mines (2–8, défaut : 4)').setMinValue(2).setMaxValue(8)),
     )
     .addSubcommand((sub) => sub.setName('2048').setDescription('2048 : fusionnez les tuiles jusqu’à 2048'))
-    .addSubcommand((sub) => sub.setName('blackjack').setDescription('Blackjack contre le croupier avec jetons virtuels'))
+    .addSubcommand((sub) => sub.setName('blackjack').setDescription('Blackjack contre le croupier : pariez votre argent (gagné en discutant)'))
     .addSubcommand((sub) =>
       sub
         .setName('stats')

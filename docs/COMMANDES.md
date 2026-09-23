@@ -1,6 +1,6 @@
 # 📚 Référence complète des commandes — Elysia v1.0.0
 
-**52 commandes slash** réparties en 9 catégories : modération, giveaways, rôles & panneaux, **communauté & animation**, configuration, utilitaires, mini-jeux, **divertissement**, propriétaire. Les paramètres marqués *(opt)* sont facultatifs, les autres sont obligatoires.
+**53 commandes slash** réparties en 10 catégories : modération, giveaways, rôles & panneaux, **communauté & animation**, **économie**, configuration, utilitaires, mini-jeux, **divertissement**, propriétaire. Les paramètres marqués *(opt)* sont facultatifs, les autres sont obligatoires.
 Sauf mention contraire, toutes les réponses sont **privées** (éphémères) : personne ne voit vos manipulations.
 
 > 🔑 **Permissions** — entre crochets : `[Admin]` = administrateur du serveur, `[Perm]` = permission Discord spécifique, `[Staff]` = rôle staff configuré via `/config roles-staff`, `[Hôte]` = rôle hôte de giveaway, `[Owner]` = `OWNER_IDS`.
@@ -229,6 +229,25 @@ Gain d'XP par message (15–25 XP, une fois par minute), courbe `100 × niveau²
 
 ---
 
+## 💰 Économie
+
+### `/argent` — Solde, fortunes et administration
+Chaque message rapporte de l'argent (8–20 🪙, anti-flood 5 s par défaut). Cet argent se **mise au blackjack** (`/jeu blackjack`), se **donne** aux autres membres et alimente le **classement des fortunes**, aussi visible sur le site intégré (onglet 💰 Économie).
+
+| Sous-commande | Options | Description |
+|---|---|---|
+| `voir` | `membre?` | Solde, rang, gagné en discutant, bilan casino, transferts |
+| `classement` | `taille?` (5–25) | Classement des membres les plus riches |
+| `donner` | `membre` `montant` | Transfère de l'argent à un autre membre (solde vérifié) |
+| `ajouter` | `membre` `montant` | **[Admin]** Crédite un portefeuille (crédation illimitée) |
+| `retirer` | `membre` `montant` | **[Admin]** Débite un portefeuille (jamais en dessous de zéro) |
+| `reinitialiser` | `membre` | **[Admin]** Remet le solde du membre à zéro |
+| `config` | `actif?` `argent_min?` `argent_max?` `delai?` `capital?` | **[Admin]** Gain par message, anti-flood et capital de départ (50 🪙 par défaut) |
+
+Le module peut être désactivé avec `/config modules module:💰 Économie actif:false`.
+
+---
+
 ## 🛠️ Configuration
 
 ### `/config` — `[Admin]`
@@ -304,7 +323,7 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 | `quiz` | `theme?` (7 thèmes ou mélangés) `difficulte?` `questions?` (3–20) `secondes?` (10–60) | Quiz multijoueur chronométré : tout le monde répond, bonus de rapidité, révélation automatique, podium final. L'hôte peut **Passer** ou **Arrêter**. |
 | `demineur` | `mines?` (2–8) | Démineur 5×4 : premier clic toujours sûr, mode drapeau, chrono et compteur de coups. |
 | `2048` | — | 2048 sur grille 4×4 avec flèches, 3 annulations et meilleur score. |
-| `blackjack` | — | Table de blackjack (100 jetons virtuels) : miser, tirer, rester, doubler. Blackjack payé 3:2. |
+| `blackjack` | — | Table de blackjack avec **mises en argent réel** (votre solde `/argent`) : miser 5/10/25/50 ou tout, tirer, rester, doubler. Blackjack payé 3:2. |
 | `stats` | `membre?` | Statistiques d'un joueur : points, rang, victoires/défaites/nuls par jeu, séries et records. |
 | `classement` | `jeu?` | Top 10 du serveur (points cumulés) — général ou limité à un jeu. |
 | `liste` | — | Catalogue des jeux avec une description de chacun. |
@@ -362,6 +381,7 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 | `/vocal` | Déplacer des membres | Déplacer des membres, Rendre muet, Gérer les salons |
 | `/tirage` | Rôle hôte ou auteur | Envoyer des messages |
 | `/suggestion config`, `/niveau config`, `/niveau recompense` | Gérer le serveur | Gérer les rôles |
+| `/argent ajouter`, `/argent retirer`, `/argent reinitialiser`, `/argent config` | Gérer le serveur | — |
 
 Un refus renvoie toujours un message **explicatif** (permission manquante, rôle trop haut, cible hors de portée…), jamais une erreur muette.
 

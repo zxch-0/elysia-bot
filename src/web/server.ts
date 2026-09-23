@@ -11,6 +11,7 @@ import { caseService } from '../services/caseService';
 import { noteService } from '../services/noteService';
 import { guildService } from '../services/guildService';
 import { levelService, totalXpForLevel, type LevelEntry } from '../services/levelService';
+import { economyService } from '../services/economyService';
 import { gameService } from '../services/gameService';
 import { suggestionService } from '../services/suggestionService';
 import { pollService } from '../services/pollService';
@@ -21,7 +22,7 @@ import type { SchedulerService } from '../services/schedulerService';
 import { mergeRecords, type GameId, type GameRecord } from '../games/types';
 import { CATEGORIES } from '../commands/categories';
 import { formatPermissionName } from '../utils/permissions';
-import { renderCommandsPage, renderCommunityPage, renderDashboard, renderDataPage, renderGamesPage } from './pages';
+import { renderCommandsPage, renderCommunityPage, renderDashboard, renderDataPage, renderEconomyPage, renderGamesPage } from './pages';
 
 const log = logger.child('web');
 
@@ -38,6 +39,7 @@ const PAGES: Record<string, { render: () => string; label: string }> = {
   '/': { render: renderDashboard, label: 'Tableau de bord' },
   '/commandes': { render: renderCommandsPage, label: 'Catalogue des commandes' },
   '/jeux': { render: renderGamesPage, label: 'Classements des mini-jeux' },
+  '/economie': { render: renderEconomyPage, label: 'Classement des fortunes' },
   '/communaute': { render: renderCommunityPage, label: 'Communauté' },
   '/donnees': { render: renderDataPage, label: 'Données internes' },
 };
@@ -136,6 +138,7 @@ function collectStats(refs: WebServerRefs) {
     notes: noteService.total(),
     reminders: reminderService.total(),
     xp: guildIds.reduce((sum, guildId) => sum + levelService.totalXp(guildId), 0),
+    money: guildIds.reduce((sum, guildId) => sum + economyService.totalMoney(guildId), 0),
     suggestionsOpen: guildIds.reduce((sum, guildId) => sum + suggestionService.countGuild(guildId, 'ouverte'), 0),
     pollsActive: guildIds.reduce(
       (sum, guildId) => sum + pollService.listGuild(guildId).filter((poll) => !poll.ended).length,
@@ -210,6 +213,26 @@ function collectLeaderboard(refs: WebServerRefs, url: URL) {
   }));
 
   return { guild, game: game || null, limit, entries };
+}
+
+/** Classement des fortunes et agrégats économiques d'un serveur. */
+function collectEconomy(refs: WebServerRefs, url: URL) {
+  const guild = resolveGuild(refs, url);
+  const limit = numberParam(url, 'limit', 10, 1, 100);
+
+  const entries = economyService.leaderboard(guild, limit).map((entry) => ({
+    userId: entry.userId,
+    tag: entry.tag,
+    wallet: entry.wallet,
+    earned: entry.earned,
+    casinoNet: entry.casinoNet,
+    wagered: entry.wagered,
+    transfersIn: entry.transfersIn,
+    transfersOut: entry.transfersOut,
+    messages: entry.messages,
+  }));
+
+  return { guild, limit, entries, ranked: economyService.countActive(guild), totals: economyService.totals(guild) };
 }
 
 /** Niveaux, suggestions, sondages, anniversaires et comptes à rebours. */
@@ -429,7 +452,8 @@ export function createWebServer(refs: WebServerRefs): http.Server {
             { path: '/api/stats', description: 'Statistiques complètes' },
             { path: '/api/commands', description: 'Catalogue des slash-commands' },
             { path: '/api/games', description: 'Mini-jeux, joueurs et volumétrie' },
-            { path: '/api/leaderboard', description: 'Classement (?guild=&game=&limit=)' },
+            { path: '/api/leaderboard', description: 'Classement des mini-jeux (?guild=&game=&limit=)' },
+            { path: '/api/economy', description: 'Classement des fortunes (?guild=&limit=)' },
             { path: '/api/community', description: 'Niveaux, suggestions, sondages, anniversaires' },
             { path: '/api/giveaways', description: 'Concours en cours et terminés' },
             { path: '/api/panels', description: 'Panneaux de rôles' },
@@ -504,6 +528,11 @@ export function createWebServer(refs: WebServerRefs): http.Server {
 
       case '/api/leaderboard': {
         json(response, 200, collectLeaderboard(refs, url));
+        return;
+      }
+
+      case '/api/economy': {
+        json(response, 200, collectEconomy(refs, url));
         return;
       }
 
@@ -617,6 +646,9 @@ export function createWebServer(refs: WebServerRefs): http.Server {
           '# HELP elysia_xp_total XP cumulée sur tous les serveurs.',
           '# TYPE elysia_xp_total counter',
           `elysia_xp_total ${stats.xp}`,
+          '# HELP elysia_money_total Argent en circulation sur tous les serveurs.',
+          '# TYPE elysia_money_total gauge',
+          `elysia_money_total ${stats.money ?? 0}`,
           '# HELP elysia_memory_heap_mb Mémoire de tas utilisée (Mo).',
           '# TYPE elysia_memory_heap_mb gauge',
           `elysia_memory_heap_mb ${stats.memoryMb}`,
@@ -680,6 +712,7 @@ export function createWebServer(refs: WebServerRefs): http.Server {
             '/api/commands',
             '/api/games',
             '/api/leaderboard',
+            '/api/economy',
             '/api/community',
             '/api/giveaways',
             '/api/panels',

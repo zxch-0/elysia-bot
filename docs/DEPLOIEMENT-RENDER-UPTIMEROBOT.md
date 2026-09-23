@@ -174,7 +174,7 @@ Si vous préférez tout régler à la main :
 
    * `https://VOTRE-SERVICE.onrender.com/health` → `{"status":"ok","ready":true,…}`
    * `https://VOTRE-SERVICE.onrender.com/` → **tableau de bord** (latence, serveurs, mémoire, giveaways actifs).
-   * `https://VOTRE-SERVICE.onrender.com/commandes` → catalogue des 52 commandes, filtrable.
+   * `https://VOTRE-SERVICE.onrender.com/commandes` → catalogue des 53 commandes, filtrable.
    * `https://VOTRE-SERVICE.onrender.com/jeux` → classements des mini-jeux par serveur.
    * `https://VOTRE-SERVICE.onrender.com/communaute` → niveaux, suggestions, sondages, anniversaires.
    * `https://VOTRE-SERVICE.onrender.com/donnees` → sanctions, notes du staff et journaux (exige `DASHBOARD_TOKEN` s'il est défini).

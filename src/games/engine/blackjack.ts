@@ -129,7 +129,7 @@ export function formatHand(cards: Card[], hideSecond = false): string {
   return cards.map((card, index) => (hideSecond && index === 1 ? '🂠' : `\`${formatCard(card)}\``)).join(' ');
 }
 
-/** Gain net en jetons virtuels (blackjack payé 3:2). */
+/** Gain net de la mise (blackjack payé 3:2, nul = mise rendue). */
 export function payout(state: BlackjackState): number {
   switch (state.outcome) {
     case 'blackjack':

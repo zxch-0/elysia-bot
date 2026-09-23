@@ -48,8 +48,9 @@ export function renderDashboard(): string {
     <div class="section-head"><h2>API publique</h2><span class="meta">Toutes les routes renvoient du JSON</span></div>
     <div class="row"><div class="grow"><div class="name"><code>GET /health</code></div><div class="meta">Endpoint de surveillance — à utiliser avec UptimeRobot</div></div><span class="tag">public</span></div>
     <div class="row"><div class="grow"><div class="name"><code>GET /api/stats</code></div><div class="meta">Statistiques complètes (Discord, services, base, planificateur)</div></div><span class="tag">public</span></div>
-    <div class="row"><div class="grow"><div class="name"><code>GET /api/commands</code></div><div class="meta">Catalogue des 52 slash-commands (catégories, options, usage)</div></div><span class="tag">public</span></div>
+    <div class="row"><div class="grow"><div class="name"><code>GET /api/commands</code></div><div class="meta">Catalogue des slash-commands (catégories, options, usage)</div></div><span class="tag">public</span></div>
     <div class="row"><div class="grow"><div class="name"><code>GET /api/leaderboard</code></div><div class="meta">Classement des mini-jeux — <code>?guild=…&amp;game=…&amp;limit=…</code></div></div><span class="tag">public</span></div>
+    <div class="row"><div class="grow"><div class="name"><code>GET /api/economy</code></div><div class="meta">Classement des fortunes — <code>?guild=…&amp;limit=…</code></div></div><span class="tag">public</span></div>
     <div class="row"><div class="grow"><div class="name"><code>GET /api/community</code></div><div class="meta">Niveaux, suggestions, sondages, anniversaires, comptes à rebours</div></div><span class="tag">public</span></div>
     <div class="row"><div class="grow"><div class="name"><code>GET /api/giveaways</code></div><div class="meta">Concours en cours et terminés avec le nombre de participants</div></div><span class="tag">public</span></div>
     <div class="row"><div class="grow"><div class="name"><code>GET /api/logs</code></div><div class="meta">400 dernières lignes de journal — protégé par <code>DASHBOARD_TOKEN</code></div></div><span class="tag warn">protégé</span></div>
@@ -321,6 +322,97 @@ export function renderGamesPage(): string {
     title: 'Elysia • Classements',
     subtitle: 'Qui domine les mini-jeux ? Classements en direct par serveur',
     active: '/jeux',
+    body,
+    script,
+    status: true,
+  });
+}
+
+/** Classement des fortunes : solde, gains par messages, bilan casino. */
+export function renderEconomyPage(): string {
+  const body = `
+  <div class="grid">
+    <div class="card"><div class="label">💰 En circulation</div><div class="value" id="money">—</div></div>
+    <div class="card"><div class="label">Membres classés</div><div class="value" id="members">—</div></div>
+    <div class="card"><div class="label">💬 Gagné en discutant</div><div class="value" id="earned">—</div></div>
+    <div class="card"><div class="label">🎲 Volume misé</div><div class="value" id="wagered">—</div></div>
+    <div class="card"><div class="label">🃏 Bilan casino</div><div class="value" id="casino">—</div></div>
+    <div class="card"><div class="label">📨 Transferts reçus</div><div class="value" id="transfers">—</div></div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>Classement des fortunes</h2>
+      <div class="controls">
+        <select id="guild"></select>
+        <select id="limit"><option value="10">Top 10</option><option value="25">Top 25</option><option value="50">Top 50</option></select>
+      </div>
+    </div>
+    <div class="card" style="padding:8px 6px"><div id="board"><div class="empty">Chargement…</div></div></div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Comment ça marche ?</h2><span class="meta">Dans Discord, avec <code>/argent</code></span></div>
+    <div class="grid" style="margin-top:0">
+      <div class="card"><div class="label">💬 1. Discutez</div><div class="meta" style="margin-top:8px">Chaque message rapporte de l’argent (petits montants, anti-flood). Votre solde : <code>/argent voir</code>.</div></div>
+      <div class="card"><div class="label">🃏 2. Misez</div><div class="meta" style="margin-top:8px">Pariez votre argent au blackjack (<code>/jeu blackjack</code>) : tirer, rester, doubler — blackjack payé 3:2.</div></div>
+      <div class="card"><div class="label">🤝 3. Partagez</div><div class="meta" style="margin-top:8px">Donnez de l’argent à vos amis (<code>/argent donner</code>) et tentez de dominer ce classement 💎.</div></div>
+    </div>
+  </section>
+  `;
+
+  const script = `
+  let selectedGuild = new URLSearchParams(location.search).get('guild') || '';
+
+  function signed(value) {
+    const n = value || 0;
+    return (n > 0 ? '+' : '') + num(n);
+  }
+
+  async function loadGuilds() {
+    const data = await fetchJson('/api/stats');
+    const select = document.getElementById('guild');
+    const guilds = data.guilds || [];
+    if (guilds.length === 0) { select.innerHTML = '<option value="">Aucun serveur</option>'; return; }
+    if (!selectedGuild) selectedGuild = guilds[0].id;
+    select.innerHTML = guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === selectedGuild ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('');
+    select.onchange = () => { selectedGuild = select.value; loadBoard(); };
+  }
+
+  async function loadBoard() {
+    const limit = document.getElementById('limit').value;
+    fill('board', '<div class="empty">Chargement…</div>');
+    try {
+      const data = await fetchJson('/api/economy?guild=' + encodeURIComponent(selectedGuild) + '&limit=' + limit);
+      setText('money', num(data.totals.money));
+      setText('members', num(data.ranked ?? data.totals.members));
+      setText('earned', num(data.totals.earned));
+      setText('wagered', num(data.totals.wagered));
+      setText('casino', signed(data.totals.casinoNet));
+      setText('transfers', num(data.totals.transfers));
+
+      if (!data.entries.length) { fill('board', '<div class="empty">Aucun portefeuille pour le moment — discutez pour gagner de l’argent avec <code>/argent voir</code> !</div>'); return; }
+      const max = data.entries[0].wallet || 1;
+      fill('board', '<table><thead><tr><th>#</th><th>Membre</th><th>Solde</th><th>Gagné en discutant</th><th>Bilan casino</th><th>Total misé</th><th>Répartition</th></tr></thead><tbody>' +
+        data.entries.map((entry, index) => {
+          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : (index + 1);
+          const casino = entry.casinoNet || 0;
+          return '<tr><td>' + medal + '</td><td>' + esc(entry.tag) + '</td><td><strong>' + num(entry.wallet) + '</strong></td>' +
+            '<td>' + num(entry.earned) + '</td><td>' + (casino > 0 ? '+' : '') + num(casino) + '</td><td>' + num(entry.wagered) + '</td>' +
+            '<td><div class="bar"><span style="width:' + Math.round(((entry.wallet || 0) / max) * 100) + '%"></span></div></td></tr>';
+        }).join('') + '</tbody></table>');
+    } catch (error) { fill('board', guardToken(error)); }
+  }
+
+  document.getElementById('limit').onchange = loadBoard;
+  loadGuilds().then(loadBoard);
+  setInterval(loadBoard, 30000);
+  `;
+
+  return renderShell({
+    title: 'Elysia • Économie',
+    subtitle: 'Classement des fortunes : argent gagné en discutant, misé au blackjack',
+    active: '/economie',
     body,
     script,
     status: true,

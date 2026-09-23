@@ -1,7 +1,9 @@
 import type { ComponentMessage } from '../../core/types';
+import { economyService, CURRENCY_EMOJI } from '../../services/economyService';
 import { gameService } from '../../services/gameService';
 import { baseEmbed, THEME } from '../../ui/embeds';
 import { buttonRows, type ButtonSpec } from '../../ui/components';
+import { humanizeNumber } from '../../utils/format';
 import {
   canDouble,
   createBlackjack,
@@ -17,12 +19,11 @@ import {
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
 import { canRematch, cid, deny, endRows, isPlayer, linkRematch, mention, rememberMessage, sessionFooterLine, updateGame } from './common';
 
-export const STARTING_CHIPS = 100;
 const BETS = [5, 10, 25, 50] as const;
-const RULES = 'Approchez 21 sans le dépasser. Le croupier tire jusqu’à 17. Blackjack payé 3:2.';
+const MIN_BET = 1;
+const RULES = 'Approchez 21 sans le dépasser. Le croupier tire jusqu’à 17. Blackjack payé 3:2 — mises en argent réel.';
 
 export interface BlackjackTableState {
-  chips: number;
   bet: number;
   hand: BlackjackState | null;
   phase: 'bet' | 'hand' | 'settled';
@@ -30,8 +31,15 @@ export interface BlackjackTableState {
   won: number;
   lost: number;
   pushed: number;
+  /** Gain net cumulé sur cette table (peut être négatif). */
+  net: number;
+  /** Meilleur gain net atteint pendant la table. */
   peak: number;
   lastMessage: string | null;
+}
+
+function walletOf(session: GameSession<BlackjackTableState>): number {
+  return economyService.balance(session.guildId, session.players[0].id);
 }
 
 function handLine(label: string, cards: BlackjackState['player'], hidden: boolean): string {
@@ -46,71 +54,79 @@ function describeOutcome(hand: BlackjackState): string {
   const gain = payout(hand);
   switch (hand.outcome) {
     case 'blackjack':
-      return `🃏 **Blackjack !** Vous gagnez **${gain}** jetons.`;
+      return `🃏 **Blackjack !** Vous gagnez **${humanizeNumber(gain)}** ${CURRENCY_EMOJI}.`;
     case 'win':
-      return `✅ Main gagnée : **+${gain}** jetons.`;
+      return `✅ Main gagnée : **+${humanizeNumber(gain)}** ${CURRENCY_EMOJI}.`;
     case 'push':
       return '🤝 Égalité — mise rendue.';
     case 'loss':
-      return handValue(hand.player).total > 21 ? `💥 Vous avez sauté : **${gain}** jetons.` : `❌ Main perdue : **${gain}** jetons.`;
+      return handValue(hand.player).total > 21
+        ? `💥 Vous avez sauté : **${humanizeNumber(gain)}** ${CURRENCY_EMOJI}.`
+        : `❌ Main perdue : **${humanizeNumber(gain)}** ${CURRENCY_EMOJI}.`;
     default:
       return '';
   }
 }
 
-function settleHand(state: BlackjackTableState): void {
+/** Restitue la mise et le gain net sur le portefeuille, puis met à jour la table. */
+function settleHand(session: GameSession<BlackjackTableState>): void {
+  const { state } = session;
   const hand = state.hand;
   if (!hand || !hand.finished || state.phase === 'settled') return;
   const gain = payout(hand);
-  // La mise avait été retirée au moment de la donne : on la restitue avec le gain net.
-  state.chips += hand.bet + gain;
+  const host = session.players[0];
+  // La mise avait été retirée au moment de la donne (et du doublet) :
+  // on restitue la mise totale avec le gain net.
+  economyService.settleBet(session.guildId, host.id, host.name, hand.bet, gain);
+  state.net += gain;
   state.hands += 1;
   if (gain > 0) state.won += 1;
   else if (gain < 0) state.lost += 1;
   else state.pushed += 1;
-  state.peak = Math.max(state.peak, state.chips);
+  state.peak = Math.max(state.peak, state.net);
   state.phase = 'settled';
   state.lastMessage = describeOutcome(hand);
 }
 
-function deal(state: BlackjackTableState, bet: number): void {
+/** Pose une mise (débitée du portefeuille) et distribue les cartes. */
+function deal(session: GameSession<BlackjackTableState>, bet: number): boolean {
+  const { state } = session;
+  const host = session.players[0];
+  if (!economyService.tryBet(session.guildId, host.id, host.name, bet)) return false;
   state.bet = bet;
-  state.chips -= bet;
   state.hand = createBlackjack(bet);
   state.phase = 'hand';
   state.lastMessage = null;
-  if (state.hand.finished) settleHand(state);
+  if (state.hand.finished) settleHand(session);
+  return true;
 }
 
 function tablePoints(state: BlackjackTableState): number {
-  const profit = state.chips - STARTING_CHIPS;
-  return Math.max(0, Math.round(profit / 5)) + state.won;
+  return Math.max(0, Math.round(state.net / 5)) + state.won;
 }
 
 function recordTable(session: GameSession<BlackjackTableState>): void {
   const { state } = session;
   if (state.hands === 0) return;
   const host = session.players[0];
-  const profit = state.chips - STARTING_CHIPS;
   gameService.record({
     guildId: session.guildId,
     userId: host.id,
     tag: host.name,
     game: 'blackjack',
-    result: profit > 0 ? 'win' : profit < 0 ? 'loss' : 'draw',
+    result: state.net > 0 ? 'win' : state.net < 0 ? 'loss' : 'draw',
     points: tablePoints(state),
-    best: state.peak,
+    best: state.net,
     betterIf: 'higher',
   });
 }
 
 function closeTable(session: GameSession<BlackjackTableState>, reason: string): void {
   const { state } = session;
-  const profit = state.chips - STARTING_CHIPS;
-  const sign = profit > 0 ? `+${profit}` : `${profit}`;
+  const sign = state.net > 0 ? `+${humanizeNumber(state.net)}` : humanizeNumber(state.net);
   gameService.finish(
     session,
-    `${reason}\n💰 Bilan : **${state.chips}** jetons (${sign}) en ${state.hands} main(s) — ${state.won} ✅ ${state.lost} ❌ ${state.pushed} 🤝 • +${tablePoints(state)} pts de classement.`,
+    `${reason}\n💰 Bilan : **${sign}** ${CURRENCY_EMOJI} en ${state.hands} main(s) — ${state.won} ✅ ${state.lost} ❌ ${state.pushed} 🤝 • +${tablePoints(state)} pts de classement.`,
   );
   recordTable(session);
 }
@@ -120,22 +136,36 @@ function render(session: GameSession<BlackjackTableState>, options: { disabled?:
   const finished = session.status === 'finished';
   const hand = state.hand;
   const hidden = state.phase === 'hand' && hand !== null && !hand.finished;
+  const wallet = walletOf(session);
 
   const lines = [
-    `${mention(session.players[0])} • 💰 Jetons : **${state.chips}**${state.phase !== 'bet' ? ` • Mise : **${state.bet}**${hand?.doubled ? ' (doublée)' : ''}` : ''} • Mains : ${state.hands} (${state.won} ✅ ${state.lost} ❌ ${state.pushed} 🤝)`,
+    `${mention(session.players[0])} • 💰 Solde : **${humanizeNumber(wallet)}** ${CURRENCY_EMOJI}${
+      state.phase !== 'bet' ? ` • Mise : **${humanizeNumber(state.bet)}**${hand?.doubled ? ' (doublée)' : ''}` : ''
+    } • Mains : ${state.hands} (${state.won} ✅ ${state.lost} ❌ ${state.pushed} 🤝)`,
     '',
     hand ? handLine('🎩 Croupier :', hand.dealer, hidden) : '🎩 Croupier : *en attente de votre mise…*',
     hand ? handLine('🙂 Vous :', hand.player, false) : '',
     state.lastMessage ? `\n${state.lastMessage}` : '',
+    wallet <= 0 && state.phase !== 'hand' && !finished
+      ? `\n💸 **Portefeuille vide !** Gagnez de l’argent en discutant puis revenez miser.`
+      : '',
     finished ? `\n${session.outcome ?? 'Table fermée.'}` : '',
     '',
     sessionFooterLine(session),
   ].filter((line) => line !== '');
 
   const embed = baseEmbed({
-    title: '🃏 Blackjack',
+    title: '🃏 Blackjack — mises en argent réel',
     description: lines.join('\n'),
-    color: finished ? THEME.colors.neutral : state.phase === 'settled' && hand ? (payout(hand) > 0 ? THEME.colors.success : payout(hand) < 0 ? THEME.colors.error : THEME.colors.info) : THEME.colors.primary,
+    color: finished
+      ? THEME.colors.neutral
+      : state.phase === 'settled' && hand
+        ? payout(hand) > 0
+          ? THEME.colors.success
+          : payout(hand) < 0
+            ? THEME.colors.error
+            : THEME.colors.info
+        : THEME.colors.primary,
     footer: `Elysia • mini-jeux • ${RULES}`,
   });
 
@@ -143,16 +173,17 @@ function render(session: GameSession<BlackjackTableState>, options: { disabled?:
   if (finished) return { embeds: [embed], components: endRows(session, { rematchLabel: 'Nouvelle table' }) };
 
   const leave: ButtonSpec = { id: cid(session, 'quit'), label: 'Quitter la table', emoji: '🚪', style: 'danger' };
-  if (state.phase === 'bet' || (state.phase === 'settled' && state.chips > 0)) {
+
+  if (state.phase === 'bet' || (state.phase === 'settled' && wallet > 0)) {
     const bets: ButtonSpec[] = BETS.map((amount) => ({
       id: cid(session, 'bet', amount),
       label: `Miser ${amount}`,
       emoji: '💰',
       style: amount === state.bet ? 'primary' : 'secondary',
-      disabled: amount > state.chips,
+      disabled: amount > wallet,
     }));
-    if (state.chips > 0 && BETS.every((amount) => amount > state.chips)) {
-      bets.push({ id: cid(session, 'bet', state.chips), label: `Tout miser (${state.chips})`, emoji: '🎲', style: 'primary' });
+    if (wallet >= MIN_BET && BETS.every((amount) => amount > wallet)) {
+      bets.push({ id: cid(session, 'bet', wallet), label: `Tout miser (${wallet})`, emoji: '🎲', style: 'primary' });
     }
     return { embeds: [embed], components: [...buttonRows(bets), ...buttonRows([leave])] };
   }
@@ -164,7 +195,7 @@ function render(session: GameSession<BlackjackTableState>, options: { disabled?:
     components: buttonRows([
       { id: cid(session, 'hit'), label: 'Tirer', emoji: '🃏', style: 'primary' },
       { id: cid(session, 'stand'), label: 'Rester', emoji: '✋', style: 'success' },
-      { id: cid(session, 'double'), label: 'Doubler', emoji: '⏫', style: 'secondary', disabled: !hand || !canDouble(hand) || state.chips < state.bet },
+      { id: cid(session, 'double'), label: 'Doubler', emoji: '⏫', style: 'secondary', disabled: !hand || !canDouble(hand) || wallet < state.bet },
       leave,
     ]),
   };
@@ -183,16 +214,16 @@ export function createBlackjackSession(params: BlackjackParams): GameSession<Bla
     channelId: params.channelId,
     host: params.host,
     state: {
-      chips: STARTING_CHIPS,
-      bet: 10,
+      bet: BETS[1],
       hand: null,
       phase: 'bet',
       hands: 0,
       won: 0,
       lost: 0,
       pushed: 0,
-      peak: STARTING_CHIPS,
-      lastMessage: `Bienvenue à la table ! Vous disposez de **${STARTING_CHIPS}** jetons virtuels. Choisissez votre mise.`,
+      net: 0,
+      peak: 0,
+      lastMessage: `Bienvenue à la table ! Misez l’argent gagné en discutant — solde actuel : **${humanizeNumber(economyService.balance(params.guildId, params.host.id))}** ${CURRENCY_EMOJI}.`,
     },
   });
 }
@@ -201,7 +232,7 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
   id: 'blackjack',
   label: 'Blackjack',
   emoji: '🃏',
-  description: 'Table de blackjack avec jetons virtuels : tirer, rester, doubler.',
+  description: 'Blackjack contre le croupier : miser son argent réel, gagné en discutant.',
   idleTimeoutMs: 10 * 60_000,
   render,
 
@@ -226,7 +257,7 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
         // Quitter en pleine main = abandonner la mise.
         state.hand.outcome = 'loss';
         state.hand.finished = true;
-        settleHand(state);
+        settleHand(session);
       }
       closeTable(session, '🚪 Vous quittez la table.');
       await updateGame(interaction, render(session));
@@ -236,13 +267,15 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
     if (action === 'bet') {
       if (state.phase === 'hand') return deny(interaction, 'Terminez la main en cours avant de miser.');
       const amount = Number.parseInt(rawAmount ?? '', 10);
-      if (!Number.isInteger(amount) || amount <= 0 || amount > state.chips) return deny(interaction, 'Mise invalide ou jetons insuffisants.');
-      deal(state, amount);
-      if (state.phase === 'settled' && state.chips <= 0) {
-        closeTable(session, '💸 Plus aucun jeton : la table ferme.');
-      } else {
-        gameService.touch(session);
+      if (!Number.isInteger(amount) || amount < MIN_BET) return deny(interaction, 'Mise invalide.');
+      if (!deal(session, amount)) {
+        return deny(
+          interaction,
+          `Solde insuffisant : vous avez **${humanizeNumber(walletOf(session))}** ${CURRENCY_EMOJI}. Gagnez de l’argent en discutant (\`/argent voir\`).`,
+          '💸 Paris refusés',
+        );
       }
+      gameService.touch(session);
       await updateGame(interaction, render(session));
       return;
     }
@@ -254,18 +287,20 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
     else if (action === 'stand') stand(hand);
     else if (action === 'double') {
       if (!canDouble(hand)) return deny(interaction, 'On ne peut doubler qu’avec ses deux premières cartes.');
-      if (state.chips < state.bet) return deny(interaction, 'Jetons insuffisants pour doubler.');
-      state.chips -= state.bet;
+      const host = session.players[0];
+      if (!economyService.tryBet(session.guildId, host.id, host.name, state.bet)) {
+        return deny(
+          interaction,
+          `Solde insuffisant pour doubler (**${humanizeNumber(walletOf(session))}** ${CURRENCY_EMOJI} disponibles).`,
+          '💸 Double refusé',
+        );
+      }
       doubleDown(hand);
       state.bet = hand.bet;
     } else return deny(interaction, 'Action inconnue.');
 
-    if (hand.finished) settleHand(state);
-    if (hand.finished && state.chips <= 0) {
-      closeTable(session, '💸 Plus aucun jeton : la table ferme.');
-    } else {
-      gameService.touch(session);
-    }
+    if (hand.finished) settleHand(session);
+    gameService.touch(session);
     await updateGame(interaction, render(session));
   },
 
@@ -275,7 +310,7 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
     if (state.phase === 'hand' && state.hand && !state.hand.finished) {
       state.hand.outcome = 'loss';
       state.hand.finished = true;
-      settleHand(state);
+      settleHand(session);
     }
     closeTable(session, '⌛ Table fermée pour inactivité.');
   },

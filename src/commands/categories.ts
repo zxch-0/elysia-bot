@@ -26,6 +26,12 @@ export const CATEGORIES: CategoryMeta[] = [
     description: 'Sondages, suggestions, anniversaires, niveaux, comptes à rebours et tirages au sort.',
   },
   {
+    id: 'economy',
+    label: 'Économie',
+    emoji: '💰',
+    description: 'Argent gagné en discutant, transferts entre membres, classement des fortunes et blackjack.',
+  },
+  {
     id: 'config',
     label: 'Configuration',
     emoji: '🛠️',

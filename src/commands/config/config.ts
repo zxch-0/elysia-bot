@@ -19,6 +19,7 @@ const MODULE_CHOICES = [
   { name: '⚙️ Rôles automatiques', value: 'autoRole' },
   { name: '🎮 Mini-jeux', value: 'games' },
   { name: '📈 Niveaux & XP', value: 'levels' },
+  { name: '💰 Économie (argent & blackjack)', value: 'economy' },
   { name: '🎂 Anniversaires', value: 'birthdays' },
   { name: '💡 Suggestions', value: 'suggestions' },
 ] as const;
@@ -125,6 +126,14 @@ export function renderConfig(settings: GuildSettings): string {
       `Délai anti-spam : ${Math.round(settings.levels.cooldownMs / 1_000)} s`,
       `Annonces de niveau : ${settings.levels.announce ? 'oui' : 'non'}`,
       `Rôles de récompense : ${settings.levels.rewards.length > 0 ? settings.levels.rewards.map((reward) => `niv. ${reward.level} → <@&${reward.roleId}>`).join(', ') : 'aucun'}`,
+    ]),
+    '',
+    '**💰 Économie**',
+    bulletList([
+      `Module : ${settings.modules.economy && settings.economy.enabled ? '🟢 actif' : '🔴 inactif'}`,
+      `Argent par message : ${settings.economy.moneyMin} à ${settings.economy.moneyMax} 🪙`,
+      `Délai anti-flood : ${Math.round(settings.economy.cooldownMs / 1_000)} s`,
+      `Capital de départ : ${humanizeNumber(settings.economy.startingBalance)} 🪙`,
     ]),
     '',
     '**🎉 Communauté**',

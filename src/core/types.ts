@@ -26,6 +26,7 @@ export type CommandCategory =
   | 'giveaways'
   | 'roles'
   | 'community'
+  | 'economy'
   | 'config'
   | 'utility'
   | 'games'

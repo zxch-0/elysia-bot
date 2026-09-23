@@ -9,6 +9,7 @@ import { logMemberEvent, logMessageEvent, renderWelcomeTemplate, sendToLog } fro
 import { baseEmbed, THEME } from '../ui/embeds';
 import { snipeService } from '../services/snipeService';
 import { levelService } from '../services/levelService';
+import { economyService } from '../services/economyService';
 
 const log = logger.child('events');
 
@@ -143,13 +144,18 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
     }),
   );
 
-  // ── XP / niveaux (module `/niveau`) ──────────────────────────────────────
+  // ── XP / niveaux & économie (modules `/niveau` et `/argent`) ─────────────
   client.on(
     Events.MessageCreate,
     guard('messageCreate', async (message) => {
       if (!message.inGuild() || message.author.bot) return;
 
       const settings = guildService.get(message.guildId);
+
+      // 💰 Chaque message rapporte un peu d'argent (anti-flood intégré),
+      //    dépensable ensuite au blackjack ou transférable avec /argent.
+      economyService.handleMessage(message, settings);
+
       const result = levelService.handleMessage(message, settings);
       if (!result) return;
 

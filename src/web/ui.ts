@@ -4,7 +4,7 @@
  *
  * Toutes les pages partagent :
  *   • le même dégradé de fond et les mêmes cartes ;
- *   • une barre de navigation vers les 5 pages ;
+ *   • une barre de navigation vers les pages du site ;
  *   • les utilitaires JS `esc`, `fmt`, `fetchJson` (jeton du tableau de bord inclus).
  */
 
@@ -18,6 +18,7 @@ export const NAV: NavLink[] = [
   { href: '/', label: 'Tableau de bord', emoji: '📊' },
   { href: '/commandes', label: 'Commandes', emoji: '💬' },
   { href: '/jeux', label: 'Classements', emoji: '🎮' },
+  { href: '/economie', label: 'Économie', emoji: '💰' },
   { href: '/communaute', label: 'Communauté', emoji: '🎉' },
   { href: '/donnees', label: 'Données', emoji: '🗄️' },
 ];

@@ -23,6 +23,8 @@ export interface GuildSettings extends Document {
     games: boolean;
     /** Système d'XP / niveaux (`/niveau`). */
     levels: boolean;
+    /** Économie : argent gagné en discutant, misé au blackjack (`/argent`). */
+    economy: boolean;
     /** Annonces d'anniversaires (`/anniversaire`). */
     birthdays: boolean;
     /** Boîte à suggestions (`/suggestion`). */
@@ -87,6 +89,8 @@ export interface GuildSettings extends Document {
   };
   /** Récompenses de rôle par niveau (système d'XP). */
   levels: LevelSettings;
+  /** Réglages du système d'économie (argent gagné en discutant). */
+  economy: EconomySettings;
   /** Réglages des modules communautaires (suggestions, anniversaires). */
   community: {
     suggestions: {
@@ -124,6 +128,19 @@ export interface LevelReward {
   roleId: string;
 }
 
+/** Réglages du système d'économie (`/argent`). */
+export interface EconomySettings {
+  enabled: boolean;
+  /** Gain d'argent minimum par message. */
+  moneyMin: number;
+  /** Gain d'argent maximum par message. */
+  moneyMax: number;
+  /** Délai anti-flood entre deux gains (ms). */
+  cooldownMs: number;
+  /** Capital de départ crédité à la première apparition d'un membre. */
+  startingBalance: number;
+}
+
 export function defaultGuildSettings(guildId: string): GuildSettings {
   const config = loadConfig();
   return {
@@ -138,6 +155,7 @@ export function defaultGuildSettings(guildId: string): GuildSettings {
       autoRole: false,
       games: true,
       levels: true,
+      economy: true,
       birthdays: true,
       suggestions: true,
     },
@@ -192,6 +210,13 @@ export function defaultGuildSettings(guildId: string): GuildSettings {
       cooldownMs: 60_000,
       announce: true,
       rewards: [],
+    },
+    economy: {
+      enabled: true,
+      moneyMin: 8,
+      moneyMax: 20,
+      cooldownMs: 5_000,
+      startingBalance: 50,
     },
     community: {
       suggestions: {

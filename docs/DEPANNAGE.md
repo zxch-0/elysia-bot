@@ -130,11 +130,11 @@ curl -s https://VOTRE-SERVICE.onrender.com/health
 ### Tester un déploiement sans risque
 Ajoutez `DRY_RUN=1` aux variables d'environnement : le serveur web, le tableau de bord et les données de démonstration démarrent **sans connexion Discord**. Retirez la variable pour passer en production.
 
-### Explorer le site intégré (5 pages + API JSON)
+### Explorer le site intégré (6 pages + API JSON)
 ```bash
 # Pages HTML (aucune ressource externe, affichables dans une iframe)
 open https://VOTRE-SERVICE.onrender.com/            # tableau de bord
-open https://VOTRE-SERVICE.onrender.com/commandes   # catalogue des 52 commandes
+open https://VOTRE-SERVICE.onrender.com/commandes   # catalogue des 53 commandes
 open https://VOTRE-SERVICE.onrender.com/jeux        # classements des mini-jeux
 open https://VOTRE-SERVICE.onrender.com/communaute  # niveaux, sondages, suggestions…
 open https://VOTRE-SERVICE.onrender.com/donnees     # cases, notes du staff, journaux

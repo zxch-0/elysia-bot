@@ -6,6 +6,7 @@ import { panelService } from '../services/panelService';
 import { giveawayService } from '../services/giveawayService';
 import { caseService } from '../services/caseService';
 import { levelService, type LevelEntry } from '../services/levelService';
+import { economyService, type EconomyEntry } from '../services/economyService';
 import { gameService } from '../services/gameService';
 import { suggestionService } from '../services/suggestionService';
 import { pollService } from '../services/pollService';
@@ -22,17 +23,17 @@ const CHANNEL_ID = '000000000000000001';
 const HOST = { id: '000000000000000000', tag: 'Demo#0000' };
 
 const DEMO_MEMBERS = [
-  { id: '100000000000000001', tag: 'Alice', xp: 48_600, messages: 1_248 },
-  { id: '100000000000000002', tag: 'Bryan', xp: 31_200, messages: 902 },
-  { id: '100000000000000003', tag: 'Chloé', xp: 22_500, messages: 640 },
-  { id: '100000000000000004', tag: 'Dorian', xp: 12_100, messages: 418 },
+  { id: '100000000000000001', tag: 'Alice', xp: 48_600, messages: 1_248, money: 12_480, casino: 3_250 },
+  { id: '100000000000000002', tag: 'Bryan', xp: 31_200, messages: 902, money: 8_320, casino: -1_180 },
+  { id: '100000000000000003', tag: 'Chloé', xp: 22_500, messages: 640, money: 5_150, casino: 640 },
+  { id: '100000000000000004', tag: 'Dorian', xp: 12_100, messages: 418, money: 2_430, casino: -2_760 },
 ];
 
 /**
  * Mode démonstration : crée un jeu de données fictif (serveur, panneau de
- * rôles, giveaway, cases de modération, niveaux, suggestions, sondages,
- * anniversaires, rappels, notes et parties de mini-jeux) pour vérifier les
- * 5 pages du site et la persistance **sans se connecter à Discord**.
+ * rôles, giveaway, cases de modération, niveaux, économie, suggestions,
+ * sondages, anniversaires, rappels, notes et parties de mini-jeux) pour
+ * vérifier les 6 pages du site et la persistance **sans se connecter à Discord**.
  *
  * Lancement : `DRY_RUN=1 npm run preview`
  */
@@ -159,6 +160,23 @@ export async function runDryRunDemo(client?: ElysiaClient): Promise<void> {
       levels.set(entry);
     }
     log.success(`${DEMO_MEMBERS.length} profils de niveaux de démonstration créés`);
+  }
+
+  // ── Économie ──────────────────────────────────────────────────────────────
+  if (economyService.countActive(guildId) === 0) {
+    const wallets = db.collection<EconomyEntry>('economy');
+    for (const member of DEMO_MEMBERS) {
+      const entry = economyService.ensure(guildId, member.id, `${member.tag}#0000`);
+      // `ensure` crédite le capital de départ : on applique les chiffres démo
+      // (solde, gagné en discutant, bilan casino) pour la page Économie.
+      entry.wallet = member.money;
+      entry.earned = Math.round(member.money * 0.55);
+      entry.casinoNet = member.casino;
+      entry.wagered = Math.round(Math.abs(member.casino) * 5 + 400);
+      entry.messages = member.messages;
+      wallets.set(entry);
+    }
+    log.success(`${DEMO_MEMBERS.length} portefeuilles de démonstration créés`);
   }
 
   // ── Suggestions ──────────────────────────────────────────────────────────
@@ -295,6 +313,6 @@ export async function runDryRunDemo(client?: ElysiaClient): Promise<void> {
 
   await db.flushAll();
 
-  log.success('Données de démonstration prêtes : ouvrez les 5 pages du site pour vérifier.');
+  log.success('Données de démonstration prêtes : ouvrez les 6 pages du site pour vérifier.');
   log.info(`Modules : ${Object.entries(settings.modules).map(([key, enabled]) => `${key}=${enabled ? 'on' : 'off'}`).join(' ')}`);
 }

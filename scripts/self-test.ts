@@ -142,6 +142,60 @@ async function main(): Promise<void> {
   check('compteur de cases incrémental', guildService.nextCaseId(guildId) === 1 && guildService.nextCaseId(guildId) === 2);
   check('renderConfig contient les sections clés', /\*\*Modules :\*\*/.test(renderConfig(updated)) && /Giveaways/.test(renderConfig(updated)));
 
+  // ── Économie ─────────────────────────────────────────────────────────────
+  section('💰 Économie');
+  const { economyService } = await import('../src/services/economyService');
+  const ecoGuild = 'eco-guild-1';
+  const ecoSettings = guildService.get(ecoGuild);
+  check('économie activée par défaut', ecoSettings.modules.economy && ecoSettings.economy.enabled);
+  check('capital de départ crédité (50 🪙)', economyService.ensure(ecoGuild, 'alice', 'Alice#0001').wallet === 50);
+  economyService.credit(ecoGuild, 'alice', 'Alice#0001', 100);
+  check('crédit ajouté au solde', economyService.balance(ecoGuild, 'alice') === 150);
+  const removedNow = economyService.debit(ecoGuild, 'alice', 'Alice#0001', 200);
+  check('débit borné au solde', removedNow === 150 && economyService.balance(ecoGuild, 'alice') === 0);
+  check(
+    'débit sur portefeuille inexistant : rien à retirer, rien à créer',
+    economyService.debit(ecoGuild, 'ghost', 'Ghost#0009', 10) === 0 && economyService.entry(ecoGuild, 'ghost') === undefined,
+  );
+  check('pari refusé si solde insuffisant', economyService.tryBet(ecoGuild, 'alice', 'Alice#0001', 10) === false);
+  economyService.credit(ecoGuild, 'alice', 'Alice#0001', 50);
+  check('pari accepté et débité', economyService.tryBet(ecoGuild, 'alice', 'Alice#0001', 20) && economyService.balance(ecoGuild, 'alice') === 30);
+  economyService.settleBet(ecoGuild, 'alice', 'Alice#0001', 20, 20);
+  check('règlement restitue mise + gain', economyService.balance(ecoGuild, 'alice') === 70);
+  economyService.settleBet(ecoGuild, 'alice', 'Alice#0001', 0, -10000);
+  check('jamais de solde négatif au règlement', economyService.balance(ecoGuild, 'alice') === 0);
+  economyService.credit(ecoGuild, 'alice', 'Alice#0001', 100);
+  economyService.credit(ecoGuild, 'bob', 'Bob#0002', 10);
+  check('nouveau portefeuille = capital de départ + crédit', economyService.balance(ecoGuild, 'bob') === 60);
+  const sent = economyService.transfer(ecoGuild, 'alice', 'Alice#0001', 'bob', 'Bob#0002', 30);
+  check('transfert débité/crédité', sent !== null && economyService.balance(ecoGuild, 'alice') === 70 && economyService.balance(ecoGuild, 'bob') === 90);
+  check('transfert refusé si solde insuffisant', economyService.transfer(ecoGuild, 'alice', 'Alice#0001', 'bob', 'Bob#0002', 1000) === null);
+  check('transfert vers soi-même refusé', economyService.transfer(ecoGuild, 'alice', 'A', 'alice', 'A', 5) === null);
+  check(
+    'montant négatif ou nul refusé',
+    economyService.transfer(ecoGuild, 'alice', 'A', 'bob', 'B', -5) === null && economyService.transfer(ecoGuild, 'alice', 'A', 'bob', 'B', 0) === null,
+  );
+  const ranking = economyService.leaderboard(ecoGuild, 10);
+  check('classement trié par solde', ranking[0]?.userId === 'bob' && ranking[1]?.userId === 'alice');
+  check('rang des membres (1er/2e)', economyService.rank(ecoGuild, 'bob') === 1 && economyService.rank(ecoGuild, 'alice') === 2);
+  check('argent en circulation cumulé', economyService.totalMoney(ecoGuild) === 160);
+  economyService.setWallet(ecoGuild, 'bob', 'Bob#0002', 0);
+  check('remise à zéro (reinitialiser admin)', economyService.balance(ecoGuild, 'bob') === 0 && economyService.rank(ecoGuild, 'bob') === null);
+  const fakeMessage = (id: string, tag: string, bot = false) =>
+    ({ author: { bot, id, tag }, guildId: ecoGuild, system: false, inGuild: () => true }) as any;
+  const gain1 = economyService.handleMessage(fakeMessage('chatty', 'Chatty#0003'), guildService.get(ecoGuild));
+  check('gain par message entre argent_min et argent_max', gain1 !== null && gain1.gained >= 8 && gain1.gained <= 20, gain1?.gained);
+  check('le solde augmente avec le message', economyService.balance(ecoGuild, 'chatty') >= 58);
+  check(
+    'anti-flood : second message immédiat ignoré',
+    economyService.handleMessage(fakeMessage('chatty', 'Chatty#0003'), guildService.get(ecoGuild), Date.now() + 10) === null,
+  );
+  check(
+    'gain à nouveau après le délai',
+    economyService.handleMessage(fakeMessage('chatty', 'Chatty#0003'), guildService.get(ecoGuild), Date.now() + 60000) !== null,
+  );
+  check('les bots ne gagnent rien', economyService.handleMessage(fakeMessage('bot1', 'Bot#0000', true), guildService.get(ecoGuild)) === null);
+
   // ── Cases de modération ───────────────────────────────────────────────────
   section('📁 Cases de modération');
   const entry = caseService.create({
@@ -261,6 +315,8 @@ async function main(): Promise<void> {
     ),
   );
   check('commande /jeu présente', client.commands.has('jeu'));
+  check('commande /argent présente', client.commands.has('argent'));
+  check('commande /argent en catégorie économie', client.commands.get('argent')?.category === 'economy');
   check('module de mini-jeux (préfixe g) enregistré', client.modules.has('g'));
   check('cooldown bloqué au second appel immédiat', (() => {
     const fake = { user: { id: '1' }, commandName: 'giveaway' } as any;
@@ -974,16 +1030,17 @@ async function main(): Promise<void> {
   check('/api/stats expose la base de données', Array.isArray(stats.database));
   check(
     '/api/stats expose les compteurs communautaires',
-    typeof stats.xp === 'number' && typeof stats.suggestionsOpen === 'number' && typeof stats.pollsActive === 'number',
+    typeof stats.xp === 'number' && typeof stats.money === 'number' && typeof stats.suggestionsOpen === 'number' && typeof stats.pollsActive === 'number',
   );
   const metrics = await (await fetch(`${base}/metrics`)).text();
-  check('/metrics au format Prometheus', metrics.includes('elysia_up') && metrics.includes('elysia_polls_active'));
+  check('/metrics au format Prometheus', metrics.includes('elysia_up') && metrics.includes('elysia_polls_active') && metrics.includes('elysia_money_total'));
 
   const { Script } = await import('node:vm');
   for (const [route, marker] of [
     ['/', 'Tableau de bord'],
     ['/commandes', 'Commandes'],
     ['/jeux', 'Classement'],
+    ['/economie', 'Économie'],
     ['/communaute', 'Communauté'],
     ['/donnees', 'Journaux'],
   ] as Array<[string, string]>) {
@@ -1046,6 +1103,18 @@ async function main(): Promise<void> {
       typeof community.birthdays.total === 'number' &&
       Array.isArray(community.countdowns),
   );
+
+  const economy = await asJson('/api/economy?guild=g1&limit=5');
+  check(
+    '/api/economy renvoie classement et agrégats',
+    economy.guild === 'g1' &&
+      Array.isArray(economy.entries) &&
+      typeof economy.ranked === 'number' &&
+      typeof economy.totals.money === 'number' &&
+      typeof economy.totals.casinoNet === 'number' &&
+      typeof economy.totals.wagered === 'number',
+  );
+  check('/api/commands inclut la catégorie économie', catalogue.categories.some((entry: any) => entry.id === 'economy' && entry.count > 0));
 
   check('/api/logs refusé sans jeton', (await fetch(`${base}/api/logs`)).status === 401);
   check('/api/cases refusé sans jeton', (await fetch(`${base}/api/cases`)).status === 401);

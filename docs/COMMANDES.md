@@ -232,7 +232,7 @@ Gain d'XP par message (15–25 XP, une fois par minute), courbe `100 × niveau²
 ## 💰 Économie
 
 ### `/argent` — Solde, fortunes et administration
-Chaque message rapporte de l'argent (8–20 🪙, anti-flood 5 s par défaut). Cet argent se **mise au blackjack** (`/jeu blackjack`), se **donne** aux autres membres et alimente le **classement des fortunes**, aussi visible sur le site intégré (onglet 💰 Économie).
+Chaque message rapporte de l'argent (8–20 🪙, anti-flood 5 s par défaut). Cet argent se **mise au blackjack** (`/blackjack`), se **donne** aux autres membres et alimente le **classement des fortunes**, aussi visible sur le site intégré (onglet 💰 Économie).
 
 | Sous-commande | Options | Description |
 |---|---|---|
@@ -308,7 +308,7 @@ Le module peut être désactivé avec `/config modules module:💰 Économie act
 
 ## 🎮 Mini-jeux
 
-### `/jeu` — 10 mini-jeux interactifs avec classement *(réponses publiques)*
+### `/jeu` — 9 mini-jeux interactifs avec classement *(réponses publiques)*
 
 Toutes les parties se jouent dans le salon avec des boutons, menus et modales. Les parties inactives expirent automatiquement (le joueur qui n'a pas joué perd par forfait en duel). Le module peut être désactivé avec `/config modules module:🎮 Mini-jeux actif:false`.
 
@@ -323,7 +323,6 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 | `quiz` | `theme?` (7 thèmes ou mélangés) `difficulte?` `questions?` (3–20) `secondes?` (10–60) | Quiz multijoueur chronométré : tout le monde répond, bonus de rapidité, révélation automatique, podium final. L'hôte peut **Passer** ou **Arrêter**. |
 | `demineur` | `mines?` (2–8) | Démineur 5×4 : premier clic toujours sûr, mode drapeau, chrono et compteur de coups. |
 | `2048` | — | 2048 sur grille 4×4 avec flèches, 3 annulations et meilleur score. |
-| `blackjack` | — | Table de blackjack avec **mises en argent réel** (votre solde `/argent`) : miser 5/10/25/50 ou tout, tirer, rester, doubler. Blackjack payé 3:2. |
 | `stats` | `membre?` | Statistiques d'un joueur : points, rang, victoires/défaites/nuls par jeu, séries et records. |
 | `classement` | `jeu?` | Top 10 du serveur (points cumulés) — général ou limité à un jeu. |
 | `liste` | — | Catalogue des jeux avec une description de chacun. |
@@ -331,6 +330,15 @@ Toutes les parties se jouent dans le salon avec des boutons, menus et modales. L
 **Points de classement (exemples)** : victoire contre un membre (morpion 10, Puissance 4 15), contre l'IA selon le niveau (Puissance 4 expert : 35), Motus selon le nombre d'essais (14 → 4), quiz : moitié du score obtenu, démineur : 3 × nombre de mines, 2048 : selon la meilleure tuile.
 
 **Limites** : 3 parties actives par hôte, 8 par salon. Une partie terminée reste affichée avec un bouton **Revanche / Rejouer** pendant 15 minutes (le bouton est ensuite retiré automatiquement). Entre membres, la revanche envoie un **nouveau défi** que l'adversaire doit accepter ; contre l'IA ou en solo, la nouvelle partie démarre aussitôt sur le même message.
+
+### `/blackjack` — Blackjack contre le croupier, mises en argent réel *(réponses publiques)*
+
+Commande autonome (hors `/jeu`, pour ne pas la confondre avec les mini-jeux de loisir) : elle met en jeu l'argent gagné en discutant (solde `/argent voir`).
+
+- Bouton **💰 Miser** → modale demandant **directement la somme à miser** : montant entier libre, **sans plafond** (seul le solde fait limite), pas de boutons de montants prédéfinis.
+- Ensuite : **🃏 Tirer**, **✋ Rester**, **⏫ Doubler** (deuxième carte, solde vérifié), **🚪 Quitter la table** (abandon de la mise en cours de main).
+- Blackjack payé 3:2, croupier tire jusqu'à 17. Mise rendue en cas d'égalité.
+- Le bilan de la table alimente les statistiques (`/jeu stats`) et le classement du serveur. Module désactivable avec `/config modules module:🎮 Mini-jeux actif:false`.
 
 ---
 

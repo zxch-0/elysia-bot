@@ -315,6 +315,12 @@ async function main(): Promise<void> {
     ),
   );
   check('commande /jeu présente', client.commands.has('jeu'));
+  check('commande /blackjack présente (autonome)', client.commands.has('blackjack'));
+  check('commande /blackjack en catégorie jeux', client.commands.get('blackjack')?.category === 'games');
+  check(
+    '/jeu n’a plus de sous-commande blackjack',
+    ((client.commands.get('jeu')?.data.toJSON() as { options?: Array<{ name?: string }> })?.options ?? []).every((option) => option.name !== 'blackjack'),
+  );
   check('commande /argent présente', client.commands.has('argent'));
   check('commande /argent en catégorie économie', client.commands.get('argent')?.category === 'economy');
   check('module de mini-jeux (préfixe g) enregistré', client.modules.has('g'));

@@ -16,7 +16,7 @@ const MAX_ADMIN_GRANT = 10_000_000;
 /**
  * Économie du serveur : argent gagné en discutant, portefeuille par membre,
  * transferts, classement des fortunes et commandes d'administration.
- * L'argent se dépense aussi au blackjack (`/jeu blackjack`).
+ * L'argent se dépense aussi au blackjack (`/blackjack`).
  */
 const moneyCommand: Command = {
   data: new SlashCommandBuilder()
@@ -100,7 +100,7 @@ const moneyCommand: Command = {
         ].join('\n'),
         color: memberColor(ctx, target.id),
         thumbnail: target.displayAvatarURL({ size: 256 }),
-        footer: `Misez votre argent au blackjack : /jeu blackjack • Transfert : /argent donner`,
+        footer: `Misez votre argent au blackjack : /blackjack • Transfert : /argent donner`,
       });
 
       embed.addFields(

@@ -6,7 +6,6 @@ import { HANGMAN_THEMES } from '../../games/content/words';
 import { QUIZ_THEMES } from '../../games/content/questions';
 import type { GameId, GamePlayer, GameSession } from '../../games/types';
 import { MEDALS, toPlayer } from '../../games/ui/common';
-import { createBlackjackSession } from '../../games/ui/blackjack';
 import { createConnectFour } from '../../games/ui/connectFour';
 import { create2048Session } from '../../games/ui/game2048';
 import { createHangmanSession } from '../../games/ui/hangman';
@@ -28,7 +27,13 @@ import { CURRENCY_EMOJI } from '../../services/economyService';
 
 registerGames();
 
-const GAME_CHOICES = GAME_DEFINITIONS.map((definition) => ({ name: `${definition.emoji} ${definition.label}`, value: definition.id }));
+/**
+ * Jeux jouables via `/jeu` — le blackjack, qui met en jeu de l'argent, a sa
+ * propre commande autonome (`/blackjack`) pour ne pas le confondre avec les
+ * mini-jeux de loisir. Il reste enregistré (stats, classement, site).
+ */
+const LOISIR_DEFINITIONS = GAME_DEFINITIONS.filter((definition) => definition.id !== 'blackjack');
+const GAME_CHOICES = LOISIR_DEFINITIONS.map((definition) => ({ name: `${definition.emoji} ${definition.label}`, value: definition.id }));
 const HANGMAN_THEME_CHOICES = [
   { name: '🎲 Aléatoire', value: 'aleatoire' },
   ...Object.entries(HANGMAN_THEMES).map(([value, meta]) => ({ name: `${meta.emoji} ${meta.label}`, value })),
@@ -110,8 +115,6 @@ function buildSession(ctx: CommandContext, subcommand: string): GameSession<any>
       return createMinesweeperSession({ ...base, mines: interaction.options.getInteger('mines') ?? 4 });
     case '2048':
       return create2048Session(base);
-    case 'blackjack':
-      return createBlackjackSession(base);
     default:
       throw new BotError('Jeu inconnu.');
   }
@@ -124,7 +127,7 @@ async function showList(ctx: CommandContext): Promise<void> {
       'Toutes les parties se jouent directement dans Discord avec des boutons.',
       'Défiez un membre (`adversaire`), ouvrez la partie à tous (`ouvert`) ou affrontez l’IA.',
       '',
-      ...GAME_DEFINITIONS.map((definition) => `${definition.emoji} **${definition.label}** — ${definition.description}\n   ↳ \`/jeu ${definition.id}\``),
+      ...LOISIR_DEFINITIONS.map((definition) => `${definition.emoji} **${definition.label}** — ${definition.description}\n   ↳ \`/jeu ${definition.id}\``),
       '',
       `🏆 \`/jeu classement\` • 📊 \`/jeu stats\` • ${gameService.activeCount()} partie(s) en cours sur le bot.`,
     ].join('\n'),
@@ -209,7 +212,7 @@ async function showLeaderboard(ctx: CommandContext): Promise<void> {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('jeu')
-    .setDescription('Mini-jeux : morpion, Puissance 4, quiz, pendu, Motus, démineur, 2048, blackjack, memory…')
+    .setDescription('Mini-jeux de loisir : morpion, Puissance 4, quiz, pendu, Motus, démineur, 2048, memory…')
     .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
@@ -313,7 +316,6 @@ const command: Command = {
         .addIntegerOption((option) => option.setName('mines').setDescription('Nombre de mines (2–8, défaut : 4)').setMinValue(2).setMaxValue(8)),
     )
     .addSubcommand((sub) => sub.setName('2048').setDescription('2048 : fusionnez les tuiles jusqu’à 2048'))
-    .addSubcommand((sub) => sub.setName('blackjack').setDescription('Blackjack contre le croupier : pariez votre argent (gagné en discutant)'))
     .addSubcommand((sub) =>
       sub
         .setName('stats')

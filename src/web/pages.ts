@@ -355,7 +355,7 @@ export function renderEconomyPage(): string {
     <div class="section-head"><h2>Comment ça marche ?</h2><span class="meta">Dans Discord, avec <code>/argent</code></span></div>
     <div class="grid" style="margin-top:0">
       <div class="card"><div class="label">💬 1. Discutez</div><div class="meta" style="margin-top:8px">Chaque message rapporte de l’argent (petits montants, anti-flood). Votre solde : <code>/argent voir</code>.</div></div>
-      <div class="card"><div class="label">🃏 2. Misez</div><div class="meta" style="margin-top:8px">Pariez votre argent au blackjack (<code>/jeu blackjack</code>) : tirer, rester, doubler — blackjack payé 3:2.</div></div>
+      <div class="card"><div class="label">🃏 2. Misez</div><div class="meta" style="margin-top:8px">Pariez votre argent au blackjack (<code>/blackjack</code>) : saisir votre mise, tirer, rester, doubler — blackjack payé 3:2.</div></div>
       <div class="card"><div class="label">🤝 3. Partagez</div><div class="meta" style="margin-top:8px">Donnez de l’argent à vos amis (<code>/argent donner</code>) et tentez de dominer ce classement 💎.</div></div>
     </div>
   </section>

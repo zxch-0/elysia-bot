@@ -1,3 +1,4 @@
+import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import type { ComponentMessage } from '../../core/types';
 import { economyService, CURRENCY_EMOJI } from '../../services/economyService';
 import { gameService } from '../../services/gameService';
@@ -19,9 +20,29 @@ import {
 import type { GameDefinition, GamePlayer, GameSession } from '../types';
 import { canRematch, cid, deny, endRows, isPlayer, linkRematch, mention, rememberMessage, sessionFooterLine, updateGame } from './common';
 
-const BETS = [5, 10, 25, 50] as const;
 const MIN_BET = 1;
+/** Longueur maximale du champ « montant » de la modale de mise (montant libre, pas de plafond). */
+const BET_INPUT_MAX_LENGTH = 15;
 const RULES = 'Approchez 21 sans le dépasser. Le croupier tire jusqu’à 17. Blackjack payé 3:2 — mises en argent réel.';
+
+/** Modale qui demande directement la somme à miser (montant entier, sans plafond). */
+function buildBetModal(session: GameSession<BlackjackTableState>): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(cid(session, 'bet'))
+    .setTitle('🃏 Blackjack — mise')
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('montant')
+          .setLabel('Montant à miser (entier, sans plafond)')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(1)
+          .setMaxLength(BET_INPUT_MAX_LENGTH)
+          .setRequired(true)
+          .setPlaceholder('Ex. : 50'),
+      ),
+    );
+}
 
 export interface BlackjackTableState {
   bet: number;
@@ -174,18 +195,11 @@ function render(session: GameSession<BlackjackTableState>, options: { disabled?:
 
   const leave: ButtonSpec = { id: cid(session, 'quit'), label: 'Quitter la table', emoji: '🚪', style: 'danger' };
 
+  // Mise : un seul bouton qui ouvre une modale demandant directement la somme
+  // à saisir (montant libre, sans plafond — seul le solde fait limite).
   if (state.phase === 'bet' || (state.phase === 'settled' && wallet > 0)) {
-    const bets: ButtonSpec[] = BETS.map((amount) => ({
-      id: cid(session, 'bet', amount),
-      label: `Miser ${amount}`,
-      emoji: '💰',
-      style: amount === state.bet ? 'primary' : 'secondary',
-      disabled: amount > wallet,
-    }));
-    if (wallet >= MIN_BET && BETS.every((amount) => amount > wallet)) {
-      bets.push({ id: cid(session, 'bet', wallet), label: `Tout miser (${wallet})`, emoji: '🎲', style: 'primary' });
-    }
-    return { embeds: [embed], components: [...buttonRows(bets), ...buttonRows([leave])] };
+    const bet: ButtonSpec = { id: cid(session, 'betmodal'), label: 'Miser', emoji: '💰', style: 'primary', disabled: wallet < MIN_BET };
+    return { embeds: [embed], components: [...buttonRows([bet]), ...buttonRows([leave])] };
   }
   if (state.phase === 'settled') {
     return { embeds: [embed], components: buttonRows([leave]) };
@@ -214,7 +228,7 @@ export function createBlackjackSession(params: BlackjackParams): GameSession<Bla
     channelId: params.channelId,
     host: params.host,
     state: {
-      bet: BETS[1],
+      bet: 0,
       hand: null,
       phase: 'bet',
       hands: 0,
@@ -223,7 +237,7 @@ export function createBlackjackSession(params: BlackjackParams): GameSession<Bla
       pushed: 0,
       net: 0,
       peak: 0,
-      lastMessage: `Bienvenue à la table ! Misez l’argent gagné en discutant — solde actuel : **${humanizeNumber(economyService.balance(params.guildId, params.host.id))}** ${CURRENCY_EMOJI}.`,
+      lastMessage: `Bienvenue à la table ! Cliquez sur 💰 **Miser** pour saisir la somme à miser (montant libre, sans plafond) — solde actuel : **${humanizeNumber(economyService.balance(params.guildId, params.host.id))}** ${CURRENCY_EMOJI}.`,
     },
   });
 }
@@ -237,11 +251,11 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
   render,
 
   async handle(interaction, session, args) {
-    const [action, rawAmount] = args;
+    const [action] = args;
     const { state } = session;
 
     if (action === 'rematch') {
-      if (!(await canRematch(interaction, session))) return;
+      if (!(await canRematch(interaction, session, true, '/blackjack'))) return;
       const fresh = createBlackjackSession({ guildId: session.guildId, channelId: session.channelId, host: session.players[0] });
       linkRematch(session, fresh, interaction);
       await updateGame(interaction, render(fresh));
@@ -249,7 +263,7 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
     }
 
     if (session.status === 'finished') return deny(interaction, 'Cette table est fermée.');
-    if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Cette table appartient à un autre membre. Ouvrez la vôtre avec `/jeu blackjack` !');
+    if (!isPlayer(session, interaction.user.id)) return deny(interaction, 'Cette table appartient à un autre membre. Ouvrez la vôtre avec `/blackjack` !');
     rememberMessage(session, interaction);
 
     if (action === 'quit') {
@@ -264,15 +278,25 @@ export const blackjackGame: GameDefinition<BlackjackTableState> = {
       return;
     }
 
-    if (action === 'bet') {
+    if (action === 'betmodal') {
+      if (!interaction.isButton()) return deny(interaction, 'Action inconnue.');
       if (state.phase === 'hand') return deny(interaction, 'Terminez la main en cours avant de miser.');
-      const amount = Number.parseInt(rawAmount ?? '', 10);
-      if (!Number.isInteger(amount) || amount < MIN_BET) return deny(interaction, 'Mise invalide.');
+      await interaction.showModal(buildBetModal(session));
+      return;
+    }
+
+    if (action === 'bet') {
+      if (!interaction.isModalSubmit()) return deny(interaction, 'Action inconnue.');
+      if (state.phase === 'hand') return deny(interaction, 'Terminez la main en cours avant de miser.');
+      const amount = Number.parseInt(interaction.fields.getTextInputValue('montant').trim(), 10);
+      if (!Number.isInteger(amount) || amount < MIN_BET) {
+        return deny(interaction, 'Mise invalide : saisissez un nombre entier d’au moins 1 pièce (ex. : 50).');
+      }
       if (!deal(session, amount)) {
         return deny(
           interaction,
-          `Solde insuffisant : vous avez **${humanizeNumber(walletOf(session))}** ${CURRENCY_EMOJI}. Gagnez de l’argent en discutant (\`/argent voir\`).`,
-          '💸 Paris refusés',
+          `Solde insuffisant : vous avez **${humanizeNumber(walletOf(session))}** ${CURRENCY_EMOJI} pour une mise de **${humanizeNumber(amount)}** ${CURRENCY_EMOJI}. Gagnez de l’argent en discutant (\`/argent voir\`).`,
+          '💸 Mise refusée',
         );
       }
       gameService.touch(session);

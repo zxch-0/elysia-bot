@@ -47,7 +47,7 @@ export const CATEGORIES: CategoryMeta[] = [
     id: 'games',
     label: 'Mini-jeux',
     emoji: '🎮',
-    description: 'Morpion, Puissance 4, quiz, pendu, Motus, démineur, 2048, blackjack, memory… avec classement.',
+    description: 'Morpion, Puissance 4, quiz, pendu, Motus, démineur, 2048, memory… avec classement. Le blackjack (argent réel) a sa propre commande : /blackjack.',
   },
   {
     id: 'fun',

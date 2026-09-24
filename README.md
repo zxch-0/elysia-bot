@@ -69,7 +69,7 @@
 
 ### 💰 Économie & argent
 - **Argent gagné en discutant** : chaque message rapporte des 🪙 (montant et anti-flood configurables), capital de départ offert aux nouveaux portefeuilles.
-- **Blackjack à mises réelles** : `/jeu blackjack` mise votre solde (`/argent voir`), blackjack payé 3:2, double possible.
+- **Blackjack à mises réelles** : `/blackjack` (commande autonome, hors `/jeu`) mise votre solde (`/argent voir`) avec un montant libre choisi dans une modale, blackjack payé 3:2, double possible.
 - **Commandes complètes** : `/argent` (`voir`, `classement`, `donner`, `ajouter`, `retirer`, `reinitialiser`, `config` pour les admins).
 - **Classement des fortunes** dans Discord (`/argent classement`) et sur le site intégré (onglet 💰 Économie).
 

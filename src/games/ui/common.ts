@@ -115,7 +115,12 @@ export function linkRematch(previous: GameSession<any>, fresh: GameSession<any>,
 }
 
 /** Vérifie qu'une revanche est possible ; répond en privé sinon. */
-export async function canRematch(interaction: GameComponentInteraction, session: GameSession<any>, ownersOnly = true): Promise<boolean> {
+export async function canRematch(
+  interaction: GameComponentInteraction,
+  session: GameSession<any>,
+  ownersOnly = true,
+  launch = `/jeu ${session.game}`,
+): Promise<boolean> {
   if (session.status !== 'finished') {
     await deny(interaction, 'La partie est encore en cours.');
     return false;
@@ -125,7 +130,7 @@ export async function canRematch(interaction: GameComponentInteraction, session:
     return false;
   }
   if (ownersOnly && !isPlayer(session, interaction.user.id)) {
-    await deny(interaction, `Seuls les joueurs de cette partie peuvent la relancer. Lancez la vôtre avec \`/jeu ${session.game}\` !`);
+    await deny(interaction, `Seuls les joueurs de cette partie peuvent la relancer. Lancez la vôtre avec \`${launch}\` !`);
     return false;
   }
   return true;

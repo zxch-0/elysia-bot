@@ -1090,6 +1090,7 @@ async function main(): Promise<void> {
   check('/metrics au format Prometheus', metrics.includes('elysia_up') && metrics.includes('elysia_polls_active') && metrics.includes('elysia_money_total'));
 
   const { Script } = await import('node:vm');
+  const pageScripts = new Map<string, string>();
   for (const [route, marker] of [
     ['/', 'Tableau de bord'],
     ['/commandes', 'Commandes'],
@@ -1105,6 +1106,7 @@ async function main(): Promise<void> {
     // Le JavaScript embarqué est compilé sans être exécuté : une apostrophe mal
     // échappée dans un rendu casserait sinon la page entière côté navigateur.
     const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
+    pageScripts.set(route, script);
     let syntaxError: string | null = null;
     try {
       new Script(script, { filename: route });
@@ -1113,6 +1115,14 @@ async function main(): Promise<void> {
     }
     check(`page ${route} : JavaScript valide`, script.length > 0 && syntaxError === null, syntaxError ?? undefined);
   }
+
+  const homeScript = pageScripts.get('/') ?? '';
+  check(
+    'accès discret : 5 clics sur une fenêtre de 4 s',
+    homeScript.includes('const ADMIN_CLICKS_NEEDED = 5;') &&
+      homeScript.includes('const ADMIN_CLICK_WINDOW = 4000;') &&
+      homeScript.includes('_adminClicks >= ADMIN_CLICKS_NEEDED'),
+  );
 
   // ── 🔐 Onglet admin caché (/admin) ────────────────────────────────────────
   const { loadConfig } = await import('../src/core/config');
@@ -1141,17 +1151,26 @@ async function main(): Promise<void> {
   const adminHeaders = { headers: { cookie, 'x-elysia-admin': '1' } };
   const adminPanelHtml = await (await fetch(`${base}/admin`, { headers: { cookie } })).text();
   check('page /admin affiche le panneau avec une session', adminPanelHtml.includes('STOP RAID SIM') && adminPanelHtml.includes('Anti-raid'));
+  const adminScript = adminPanelHtml.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
   check(
     'page /admin : JavaScript valide',
     (() => {
-      const code = adminPanelHtml.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
       try {
-        new Script(code, { filename: '/admin' });
-        return code.length > 0;
+        new Script(adminScript, { filename: '/admin' });
+        return adminScript.length > 0;
       } catch {
         return false;
       }
     })(),
+  );
+
+  // Non-régression : la valeur du champ était vérifiée côté navigateur mais
+  // jamais transmise, donc le serveur refusait chaque lancement (400).
+  check(
+    'page /admin : la requête du simulateur envoie « confirm » au serveur',
+    /const confirmField = document\.getElementById\('sim-confirm'\)\.value\.trim\(\);/.test(adminScript) &&
+      /api\('\/api\/admin\/raid-sim\/start',[\s\S]{0,300}?body:\s*\{[\s\S]{0,200}?confirm:\s*confirmField/.test(adminScript),
+    adminScript.includes('confirm: confirmField') ? 'champ lu mais mal positionné dans le script' : 'confirm absent du script du panneau',
   );
 
   const adminOverview: any = await (await fetch(`${base}/api/admin/overview`, adminHeaders)).json();

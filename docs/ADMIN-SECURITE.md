@@ -17,7 +17,7 @@ trois manières, toutes discrètes :
 
 | Méthode | Comment |
 | --- | --- |
-| 🖱️ Clics secrets | **7 clics rapides** (moins de 2,5 s) sur le logo 💜 ou sur le texte `Elysia v1.0.0` en bas de page |
+| 🖱️ Clics secrets | **5 clics rapides** (moins de 4 s) sur le logo 💜 ou sur le texte `Elysia v1.0.0` en bas de page |
 | ⌨️ Raccourci | **Ctrl + Maj + A** (ou **Cmd + Maj + A** sur Mac) depuis n'importe quelle page |
 | 🔗 URL directe | `https://VOTRE-SERVICE.onrender.com/admin` |
 

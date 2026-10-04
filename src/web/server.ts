@@ -23,6 +23,10 @@ import { mergeRecords, type GameId, type GameRecord } from '../games/types';
 import { CATEGORIES } from '../commands/categories';
 import { formatPermissionName } from '../utils/permissions';
 import { renderCommandsPage, renderCommunityPage, renderDashboard, renderDataPage, renderEconomyPage, renderGamesPage } from './pages';
+import { renderAdminLock, renderAdminPanel } from './admin';
+import { ADMIN_COOKIE, adminAuth, clientIp, readCookie, safeEqual, type AdminMeta } from '../services/adminAuthService';
+import { antiRaidService } from '../services/antiRaidService';
+import { raidSimService, sanitizeRequest } from '../services/raidSimService';
 
 const log = logger.child('web');
 
@@ -106,13 +110,72 @@ function schedulerOf(refs: WebServerRefs): SchedulerService | undefined {
   return (refs.client as unknown as { scheduler?: SchedulerService }).scheduler ?? refs.scheduler;
 }
 
-/** Vérifie le jeton du tableau de bord (vide = accès libre). */
+/**
+ * Vérifie le jeton du tableau de bord (vide = accès libre).
+ * La comparaison est faite en temps constant (voir `safeEqual`) : comparer les
+ * chaînes caractère par caractère laisse fuiter leur préfixe commun.
+ */
 function authorized(request: IncomingMessage, url: URL): boolean {
   const expected = loadConfig().dashboardToken;
   if (!expected) return true;
   const header = request.headers['x-dashboard-token'];
   const provided = (Array.isArray(header) ? header[0] : header) ?? url.searchParams.get('token') ?? '';
-  return provided.trim() === expected;
+  return safeEqual(provided.trim(), expected);
+}
+
+/** Taille maximale d'un corps de requête (JSON) : borne la mémoire utilisée. */
+const MAX_BODY_BYTES = 32 * 1024;
+
+/** Lit le corps d'une requête POST (taille limitée, jamais bloquant). */
+function readBody(request: IncomingMessage): Promise<{ ok: true; raw: string } | { ok: false; reason: string; status: number }> {
+  return new Promise((resolve) => {
+    let size = 0;
+    let settled = false;
+    const chunks: Buffer[] = [];
+
+    const done = (result: { ok: true; raw: string } | { ok: false; reason: string; status: number }) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    request.on('data', (chunk: Buffer) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        done({ ok: false, reason: 'Corps de requête trop volumineux', status: 413 });
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => done({ ok: true, raw: Buffer.concat(chunks).toString('utf8') }));
+    request.on('error', () => done({ ok: false, reason: 'Lecture du corps impossible', status: 400 }));
+    // Un client qui n'envoie jamais la fin du corps ne doit pas immobiliser la requête.
+    setTimeout(() => done({ ok: false, reason: 'Délai dépassé', status: 408 }), 10_000).unref?.();
+  });
+}
+
+/** Réponse d'erreur sur le corps : ferme la connexion (on ne draine pas le reste). */
+function bodyError(response: ServerResponse, status: number, reason: string): void {
+  response.setHeader('connection', 'close');
+  json(response, status, { ok: false, error: reason });
+}
+
+/** Métadonnées client utilisées par le journal d'audit admin. */
+function adminMeta(request: IncomingMessage): AdminMeta {
+  const remote = request.socket.remoteAddress ?? 'inconnue';
+  return {
+    ip: clientIp(request.headers as Record<string, string | string[] | undefined>, remote),
+    userAgent: String(request.headers['user-agent'] ?? '—'),
+  };
+}
+
+/** Vrai si la requête peut être une requête « même site » (anti-CSRF). */
+function sameSiteRequest(request: IncomingMessage): boolean {
+  const site = request.headers['sec-fetch-site'];
+  const value = Array.isArray(site) ? site[0] : site;
+  if (!value) return true; // navigateur ancien : le cookie SameSite=Strict protège déjà
+  return value === 'same-origin' || value === 'same-site' || value === 'none';
 }
 
 /** Statistiques complètes consommées par la page d'accueil et `/api/stats`. */
@@ -388,6 +451,274 @@ function collectLogs(url: URL): { logs: LogRow[]; buffered: number } {
   return { logs, buffered: recentLogs(400).length };
 }
 
+/**
+ * Données de l'onglet admin (`/api/admin/overview`).
+ * Rien n'est exposé aux pages publiques : ces informations ne sortent jamais
+ * sans session admin valide.
+ */
+function collectAdminOverview(refs: WebServerRefs, url: URL) {
+  const snapshot = refs.client.snapshot();
+  const guilds = snapshot.guilds.map((guild) => ({
+    id: guild.id,
+    name: guild.name,
+    members: guild.members,
+    icon: guild.icon,
+  }));
+
+  const requested = url.searchParams.get('guild') ?? '';
+  const selectedGuild = guilds.some((guild) => guild.id === requested) ? requested : (guilds[0]?.id ?? '');
+  const antiraid = antiRaidService.overview(selectedGuild);
+
+  return {
+    bot: {
+      ready: snapshot.ready,
+      tag: snapshot.user?.tag ?? null,
+      latencyMs: snapshot.latencyMs,
+    },
+    guilds,
+    selectedGuild,
+    antiraid,
+    raidSim: {
+      enabled: raidSimService.enabled,
+      allowlist: raidSimService.allowlist,
+      status: raidSimService.status.status,
+      dryRun: loadConfig().dryRun || !snapshot.ready,
+      logs: raidSimService.status.logs.slice(-80),
+      progress: {
+        messagesSent: raidSimService.status.messagesSent,
+        messagesPlanned: raidSimService.status.messagesPlanned,
+        channelsCreated: raidSimService.status.channelsCreated,
+        channelsPlanned: raidSimService.status.channelsPlanned,
+        cleanedChannels: raidSimService.status.cleanedChannels,
+        startedAt: raidSimService.status.startedAt,
+        endedAt: raidSimService.status.endedAt,
+      },
+    },
+    security: adminAuth.status(),
+    audit: adminAuth.recentAudit(80),
+    stats: snapshot,
+    logs: recentLogs(60).map((entry: LogEntry) => ({
+      clock: entry.clock,
+      level: entry.level,
+      scope: entry.scope,
+      message: entry.message,
+    })),
+  };
+}
+
+/**
+ * API du panneau admin (`/api/admin/*`).
+ * Renvoie `true` quand la route a été traitée (le serveur n'applique alors pas
+ * le 405 générique). Toutes les actions sont journalisées.
+ */
+async function handleAdminApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+  route: string,
+  refs: WebServerRefs,
+  method: string,
+  meta: AdminMeta,
+): Promise<boolean> {
+  if (route !== '/api/admin' && !route.startsWith('/api/admin/')) return false;
+
+  const readJson = async (): Promise<{ ok: true; value: any } | { ok: false }> => {
+    const body = await readBody(request);
+    if (!body.ok) {
+      bodyError(response, body.status, body.reason);
+      return { ok: false };
+    }
+    try {
+      return { ok: true, value: JSON.parse(body.raw || '{}') };
+    } catch {
+      json(response, 400, { ok: false, error: 'JSON invalide.' });
+      return { ok: false };
+    }
+  };
+
+  // ── Connexion (seule route sans session) ────────────────────────────────
+  if (route === '/api/admin/login') {
+    if (method !== 'POST') {
+      json(response, 405, { ok: false, error: 'Méthode non autorisée' });
+      return true;
+    }
+    if (!sameSiteRequest(request)) {
+      json(response, 403, { ok: false, error: 'Origine refusée.' });
+      return true;
+    }
+    const payload = await readJson();
+    if (!payload.ok) return true;
+
+    const result = adminAuth.login(String(payload.value?.code ?? ''), meta);
+    if (!result.ok) {
+      if (result.retryAfterSeconds) response.setHeader('retry-after', String(result.retryAfterSeconds));
+      json(response, result.status, {
+        ok: false,
+        error: result.reason,
+        retryAfterSeconds: result.retryAfterSeconds,
+        attemptsLeft: result.attemptsLeft,
+      });
+      return true;
+    }
+
+    response.setHeader('set-cookie', result.cookie);
+    json(response, 200, {
+      ok: true,
+      expiresInMinutes: Math.round(loadConfig().adminSessionTtlMs / 60_000),
+    });
+    return true;
+  }
+
+  // ── À partir d'ici : session admin obligatoire ──────────────────────────
+  const sessionId = readCookie(request.headers.cookie, ADMIN_COOKIE);
+  const session = adminAuth.verify(sessionId, meta);
+  if (!session) {
+    json(response, 401, { ok: false, error: 'Session admin requise (rechargez /admin).' });
+    return true;
+  }
+
+  if (method === 'GET' || method === 'HEAD') {
+    if (route === '/api/admin/overview') {
+      const secure = request.headers['x-forwarded-proto'] === 'https';
+      response.setHeader('set-cookie', adminAuth.serializeCookie(session.id, secure));
+      json(response, 200, { ok: true, ...collectAdminOverview(refs, url) });
+      return true;
+    }
+    json(response, 404, { ok: false, error: 'Route admin inconnue.' });
+    return true;
+  }
+
+  if (method !== 'POST') {
+    json(response, 405, { ok: false, error: 'Méthode non autorisée' });
+    return true;
+  }
+
+  // Double protection CSRF : en-tête personnalisé (impossible depuis un simple
+  // formulaire distant) + cookie SameSite=Strict.
+  const csrf = request.headers['x-elysia-admin'];
+  if (!sameSiteRequest(request) || String(Array.isArray(csrf) ? csrf[0] : csrf) !== '1') {
+    json(response, 403, { ok: false, error: 'Requête refusée (protection anti-CSRF).' });
+    return true;
+  }
+
+  const payload = await readJson();
+  if (!payload.ok) return true;
+  const data = payload.value ?? {};
+
+  const resolveGuild = (guildId: unknown) => refs.client.guilds.cache.get(String(guildId ?? '')) ?? null;
+
+  switch (route) {
+    case '/api/admin/logout': {
+      adminAuth.logout(sessionId, meta);
+      response.setHeader('set-cookie', adminAuth.clearCookie(request.headers['x-forwarded-proto'] === 'https'));
+      json(response, 200, { ok: true });
+      return true;
+    }
+
+    case '/api/admin/antiraid/save': {
+      const guildId = String(data.guildId ?? '');
+      if (!resolveGuild(guildId)) {
+        json(response, 404, { ok: false, error: 'Serveur introuvable (le bot doit être présent).' });
+        return true;
+      }
+      const settings = antiRaidService.saveSettings(guildId, data.settings ?? {}, `panneau admin (${meta.ip})`);
+      adminAuth.record('anti-raid', `Réglages enregistrés sur ${guildId}`, meta, session);
+      json(response, 200, { ok: true, settings: antiRaidService.overview(guildId).settings, saved: Boolean(settings) });
+      return true;
+    }
+
+    case '/api/admin/antiraid/lockdown': {
+      const guild = resolveGuild(data.guildId);
+      if (!guild) {
+        json(response, 404, { ok: false, error: 'Serveur introuvable.' });
+        return true;
+      }
+      const duration = Number.parseInt(String(data.durationSeconds ?? 0), 10);
+      const result = await antiRaidService.lockdown(guild, {
+        reason: typeof data.reason === 'string' && data.reason.trim() ? data.reason.trim().slice(0, 300) : 'Verrouillage manuel depuis le panneau admin',
+        durationSeconds: Number.isFinite(duration) ? Math.max(0, Math.min(86_400, duration)) : 0,
+        by: 'panneau admin',
+      });
+      adminAuth.record('verrouillage', `${guild.name} (${guild.id}) — ${result.ok ? `${result.channels} salons` : `échec : ${result.error}`}`, meta, session);
+      if (!result.ok) json(response, 400, { ok: false, error: result.error ?? 'Verrouillage impossible.' });
+      else json(response, 200, { ok: true, channels: result.channels, until: result.until });
+      return true;
+    }
+
+    case '/api/admin/antiraid/release': {
+      const guild = resolveGuild(data.guildId);
+      if (!guild) {
+        json(response, 404, { ok: false, error: 'Serveur introuvable.' });
+        return true;
+      }
+      const result = await antiRaidService.release(guild, { reason: 'Déverrouillage manuel depuis le panneau admin', by: 'panneau admin' });
+      adminAuth.record('deverrouillage', `${guild.name} (${guild.id}) — ${result.channels} salons restaurés`, meta, session);
+      json(response, 200, { ok: true, channels: result.channels });
+      return true;
+    }
+
+    case '/api/admin/antiraid/test': {
+      const guildId = String(data.guildId ?? '');
+      if (!resolveGuild(guildId)) {
+        json(response, 404, { ok: false, error: 'Serveur introuvable.' });
+        return true;
+      }
+      const requested = String(data.type ?? '');
+      const types: Array<Parameters<typeof antiRaidService.test>[1]> = ['arrivees', 'salons', 'roles', 'bans', 'spam'];
+      const selected = types.filter((type) => !requested || type === requested);
+      const results = selected.map((type) => antiRaidService.test(guildId, type));
+      adminAuth.record('test anti-raid', `Simulation de détection sur ${guildId} (aucun effet)`, meta, session);
+      json(response, 200, { ok: true, results });
+      return true;
+    }
+
+    case '/api/admin/raid-sim/start': {
+      if (String(data.confirm ?? '').trim().toUpperCase() !== 'SIMULATION') {
+        json(response, 400, { ok: false, error: 'Confirmation invalide : saisissez « SIMULATION ».' });
+        return true;
+      }
+      const request_ = sanitizeRequest(data);
+      const result = await raidSimService.start(request_);
+      if (!result.ok) {
+        json(response, result.status, { ok: false, error: result.error });
+        return true;
+      }
+      adminAuth.record(
+        'simulateur de raid',
+        `Lancement sur ${request_.guildId} — ${request_.messages} message(s), ${request_.channels} salon(s)`,
+        meta,
+        session,
+      );
+      json(response, 200, { ok: true, progress: result.progress, applied: request_ });
+      return true;
+    }
+
+    case '/api/admin/raid-sim/stop': {
+      const progress = await raidSimService.stop();
+      adminAuth.record('simulateur de raid', `Arrêt demandé (${progress.messagesSent} message(s), ${progress.cleanedChannels} salon(s) nettoyé(s))`, meta, session);
+      json(response, 200, { ok: true, progress });
+      return true;
+    }
+
+    case '/api/admin/raid-sim/cleanup': {
+      const guildId = String(data.guildId ?? '');
+      if (!raidSimService.isAllowed(guildId)) {
+        json(response, 403, { ok: false, error: 'Serveur absent de la liste blanche RAID_SIM_GUILD_IDS.' });
+        return true;
+      }
+      const result = await raidSimService.cleanupLeftovers(guildId);
+      adminAuth.record('simulateur de raid', `Nettoyage de secours sur ${guildId} — ${result.removed} salon(s)`, meta, session);
+      json(response, 200, { ok: true, removed: result.removed, names: result.names });
+      return true;
+    }
+
+    default: {
+      json(response, 404, { ok: false, error: 'Route admin inconnue.' });
+      return true;
+    }
+  }
+}
+
 /** Serveur HTTP : health-check UptimeRobot, site intégré et API JSON. */
 export function createWebServer(refs: WebServerRefs): http.Server {
   const server = http.createServer(async (request: IncomingMessage, response: ServerResponse) => {
@@ -401,8 +732,34 @@ export function createWebServer(refs: WebServerRefs): http.Server {
       return;
     }
 
+    if (method === 'POST') {
+      // Seule l'API du panneau admin accepte des écritures (sessions + CSRF).
+      const handled = await handleAdminApi(request, response, url, route, refs, method, adminMeta(request));
+      if (!handled) json(response, 405, { error: 'Méthode non autorisée', method });
+      return;
+    }
+
     if (method !== 'GET' && method !== 'HEAD') {
       json(response, 405, { error: 'Méthode non autorisée', method });
+      return;
+    }
+
+    // 🔐 Onglet admin caché : hors navigation publique, jamais référencé par
+    // l'API JSON, protégé par code + session (cookie HttpOnly, SameSite=Strict).
+    if (route === '/admin') {
+      const session = adminAuth.verify(readCookie(request.headers.cookie, ADMIN_COOKIE), adminMeta(request));
+      send(response, 200, session ? renderAdminPanel() : renderAdminLock(), 'text/html; charset=utf-8', {
+        // Compatible aperçus/iframes (le panneau reste inutilisable sans code).
+        'x-frame-options': 'ALLOWALL',
+        'content-security-policy': "frame-ancestors *",
+        'referrer-policy': 'no-referrer',
+      });
+      return;
+    }
+
+    // Toute autre route /api/admin/* : délégué au gestionnaire dédié.
+    if (route === '/api/admin' || route.startsWith('/api/admin/')) {
+      await handleAdminApi(request, response, url, route, refs, method, adminMeta(request));
       return;
     }
 

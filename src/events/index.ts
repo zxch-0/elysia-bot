@@ -10,6 +10,7 @@ import { baseEmbed, THEME } from '../ui/embeds';
 import { snipeService } from '../services/snipeService';
 import { levelService } from '../services/levelService';
 import { economyService } from '../services/economyService';
+import { antiRaidService } from '../services/antiRaidService';
 
 const log = logger.child('events');
 
@@ -72,6 +73,11 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
     Events.GuildMemberAdd,
     guard('guildMemberAdd', async (member) => {
       const settings = guildService.get(member.guild.id);
+
+      // 🛡️ Anti-raid AVANT tout le reste : si le compte est expulsé/banni,
+      // inutile de lui souhaiter la bienvenue ou de lui donner des rôles.
+      const raid = await antiRaidService.handleMemberAdd(member);
+      if (raid.punished) return;
 
       if (settings.modules.logs) await logMemberEvent({ guild: member.guild, type: 'join', member });
 
@@ -150,6 +156,9 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
     guard('messageCreate', async (message) => {
       if (!message.inGuild() || message.author.bot) return;
 
+      // 🛡️ Anti-spam (désactivé par défaut) : coupe les floods avant XP/argent.
+      await antiRaidService.handleMessage(message);
+
       const settings = guildService.get(message.guildId);
 
       // 💰 Chaque message rapporte un peu d'argent (anti-flood intégré),
@@ -191,6 +200,9 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
   client.on(
     Events.GuildBanAdd,
     guard('guildBanAdd', async (ban) => {
+      // 🛡️ Bannissements en série (compte staff compromis ?) → alerte anti-raid.
+      await antiRaidService.handleBanAdd(ban.guild, ban.user.tag);
+
       const settings = guildService.get(ban.guild.id);
       if (!settings.modules.logs) return;
       await sendToLog(
@@ -235,6 +247,41 @@ export function registerEvents(client: ElysiaClient, onReady?: () => void): void
       await owner?.send({ embeds: [embed] }).catch(() => undefined);
       const systemChannel = guild.systemChannel;
       if (systemChannel) await systemChannel.send({ embeds: [embed] }).catch(() => undefined);
+    }),
+  );
+
+  // ── 🛡️ Anti-raid : création massive de salons / rôles ─────────────────────
+  client.on(
+    Events.ChannelCreate,
+    guard('channelCreate', async (channel) => {
+      if (!channel.guild) return;
+      await antiRaidService.handleChannelChange({
+        id: channel.id,
+        guild: channel.guild,
+        name: 'name' in channel ? (channel.name as string) : null,
+        kind: 'create',
+      });
+    }),
+  );
+
+  client.on(
+    Events.ChannelDelete,
+    guard('channelDelete', async (channel) => {
+      if (!channel.guild) return;
+      // Une suppression en série est aussi suspecte qu'une création.
+      await antiRaidService.handleChannelChange({
+        id: channel.id,
+        guild: channel.guild,
+        name: 'name' in channel ? (channel.name as string) : null,
+        kind: 'delete',
+      });
+    }),
+  );
+
+  client.on(
+    Events.GuildRoleCreate,
+    guard('roleCreate', async (role) => {
+      await antiRaidService.handleRoleCreate(role);
     }),
   );
 

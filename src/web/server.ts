@@ -674,7 +674,10 @@ async function handleAdminApi(
 
     case '/api/admin/raid-sim/start': {
       if (String(data.confirm ?? '').trim().toUpperCase() !== 'SIMULATION') {
-        json(response, 400, { ok: false, error: 'Confirmation invalide : saisissez « SIMULATION ».' });
+        json(response, 400, {
+          ok: false,
+          error: 'Confirmation invalide : saisissez « SIMULATION » dans le champ « Saisissez SIMULATION pour confirmer » du panneau, puis relancez.',
+        });
         return true;
       }
       const request_ = sanitizeRequest(data);

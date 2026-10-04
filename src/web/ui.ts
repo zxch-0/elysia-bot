@@ -182,8 +182,10 @@ const HELPERS = `
     return '<div class="empty">⚠️ Données indisponibles : ' + esc(error && error.message) + '</div>';
   }
   // ── 🔐 Accès discret à l'onglet admin (aucun lien visible) ───────────────
-  // 7 clics rapides sur le logo ou la ligne de version • Ctrl/Cmd + Maj + A.
+  // 5 clics rapides sur le logo ou la ligne de version • Ctrl/Cmd + Maj + A.
   // Le code est demandé puis vérifié côté serveur : sans lui, l'onglet reste fermé.
+  const ADMIN_CLICKS_NEEDED = 5;
+  const ADMIN_CLICK_WINDOW = 4000;
   let _adminClicks = 0, _adminTimer = null;
   function adminGate() {
     const value = window.prompt('Accès réservé — code administrateur :');
@@ -204,8 +206,8 @@ const HELPERS = `
   function adminSecretClick() {
     _adminClicks += 1;
     clearTimeout(_adminTimer);
-    _adminTimer = setTimeout(() => { _adminClicks = 0; }, 2500);
-    if (_adminClicks >= 7) { _adminClicks = 0; adminGate(); }
+    _adminTimer = setTimeout(() => { _adminClicks = 0; }, ADMIN_CLICK_WINDOW);
+    if (_adminClicks >= ADMIN_CLICKS_NEEDED) { _adminClicks = 0; adminGate(); }
   }
   function initAdminTrigger() {
     const version = document.getElementById('elysia-ver');

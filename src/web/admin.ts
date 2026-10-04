@@ -663,7 +663,8 @@ export function renderAdminPanel(): string {
   });
 
   document.getElementById('sim-start').addEventListener('click', async () => {
-    if (document.getElementById('sim-confirm').value.trim().toUpperCase() !== 'SIMULATION') {
+    const confirmField = document.getElementById('sim-confirm').value.trim();
+    if (confirmField.toUpperCase() !== 'SIMULATION') {
       line('sim-status', 'Saisissez exactement « SIMULATION » pour confirmer.', 'err');
       return;
     }
@@ -675,6 +676,7 @@ export function renderAdminPanel(): string {
         method: 'POST',
         body: {
           guildId,
+          confirm: confirmField,
           messages: Number.parseInt(document.getElementById('sim-messages').value, 10),
           messageIntervalMs: Number.parseInt(document.getElementById('sim-message-interval').value, 10),
           channels: Number.parseInt(document.getElementById('sim-channels').value, 10),

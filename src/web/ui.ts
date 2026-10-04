@@ -181,6 +181,45 @@ const HELPERS = `
     }
     return '<div class="empty">⚠️ Données indisponibles : ' + esc(error && error.message) + '</div>';
   }
+  // ── 🔐 Accès discret à l'onglet admin (aucun lien visible) ───────────────
+  // 7 clics rapides sur le logo ou la ligne de version • Ctrl/Cmd + Maj + A.
+  // Le code est demandé puis vérifié côté serveur : sans lui, l'onglet reste fermé.
+  let _adminClicks = 0, _adminTimer = null;
+  function adminGate() {
+    const value = window.prompt('Accès réservé — code administrateur :');
+    if (value === null || value === '') return;
+    fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-elysia-admin': '1' },
+      body: JSON.stringify({ code: value }),
+      cache: 'no-store',
+    })
+      .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then((result) => {
+        if (result.ok && result.data.ok) { location.href = '/admin'; return; }
+        alert('Accès refusé' + (result.data.error ? ' — ' + result.data.error : '.'));
+      })
+      .catch(() => alert('Accès refusé.'));
+  }
+  function adminSecretClick() {
+    _adminClicks += 1;
+    clearTimeout(_adminTimer);
+    _adminTimer = setTimeout(() => { _adminClicks = 0; }, 2500);
+    if (_adminClicks >= 7) { _adminClicks = 0; adminGate(); }
+  }
+  function initAdminTrigger() {
+    const version = document.getElementById('elysia-ver');
+    if (version) version.addEventListener('click', adminSecretClick);
+    const logo = document.querySelector('.logo');
+    if (logo) logo.addEventListener('click', adminSecretClick);
+    document.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        adminGate();
+      }
+    });
+  }
+  initAdminTrigger();
   const byPoints = (a, b) => (b.points || 0) - (a.points || 0);
 `;
 
@@ -232,7 +271,7 @@ export function renderShell(options: ShellOptions): string {
 ${options.body}
 
   <footer>
-    Elysia v1.0.0 — ${NAV.length} pages, interface 100 % autonome (aucune ressource externe)<br />
+    <span id="elysia-ver" style="cursor:default">Elysia v1.0.0</span> — ${NAV.length} pages, interface 100 % autonome (aucune ressource externe)<br />
     Les pages se rafraîchissent automatiquement ; l'API JSON est ouverte pour vos propres intégrations.
   </footer>
 </div>

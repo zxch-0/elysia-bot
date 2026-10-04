@@ -33,6 +33,31 @@ const envSchema = z.object({
   // Jeton optionnel protégeant les pages sensibles du site intégré
   // (/donnees, /api/cases, /api/notes, /api/logs). Vide = accès libre.
   DASHBOARD_TOKEN: z.string().optional().default(''),
+
+  // ── Onglet admin caché (/admin) ───────────────────────────────────────────
+  // Code d'accès du panneau d'administration caché. 4 à 64 caractères.
+  // ⚠️ Changez-le : la valeur par défaut est publique (elle est documentée).
+  ADMIN_PANEL_CODE: z
+    .string()
+    .optional()
+    .default('1357')
+    .transform((value) => value.trim())
+    .refine((value) => value.length >= 4 && value.length <= 64, {
+      message: 'ADMIN_PANEL_CODE doit contenir entre 4 et 64 caractères',
+    }),
+  // Durée de vie d'une session admin (minutes).
+  ADMIN_SESSION_TTL_MINUTES: z.coerce.number().int().min(5).max(720).default(60),
+  // Verrouillage temporaire après trop d'essais ratés (secondes).
+  ADMIN_LOCKOUT_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
+  // Liste blanche d'IP autorisées à ouvrir le panneau admin (séparées par des
+  // virgules). Vide = toutes les IP (protection par code seule).
+  ADMIN_ALLOWED_IPS: z.string().optional().default(''),
+
+  // ── Simulateur de raid (test uniquement) ──────────────────────────────────
+  // Liste d'identifiants de serveurs de TEST sur lesquels la simulation est
+  // autorisée (séparés par des virgules). Vide = simulation totalement
+  // désactivée : aucune action offensive n'est possible.
+  RAID_SIM_GUILD_IDS: z.string().optional().default(''),
 });
 
 /** Portée de publication des slash-commands (voir src/core/handlers/commandPublisher.ts). */
@@ -60,6 +85,18 @@ export interface AppConfig {
   commandsScope: CommandsScope;
   /** Jeton du tableau de bord (vide = pages sensibles en accès libre). */
   dashboardToken: string;
+  /** Code d'accès de l'onglet admin caché (/admin). */
+  adminPanelCode: string;
+  /** Vrai si le code admin n'a jamais été changé (valeur par défaut). */
+  adminCodeIsDefault: boolean;
+  /** Durée de vie d'une session admin (ms). */
+  adminSessionTtlMs: number;
+  /** Durée du verrouillage anti-brute-force de l'onglet admin (ms). */
+  adminLockoutMs: number;
+  /** Liste blanche d'IP autorisées pour l'onglet admin (vide = toutes). */
+  adminAllowedIps: string[];
+  /** Serveurs de TEST autorisés pour le simulateur de raid. */
+  raidSimGuildIds: string[];
 }
 
 let cached: AppConfig | undefined;
@@ -116,6 +153,12 @@ export function loadConfig(): AppConfig {
     birthdayTimezone: env.BIRTHDAY_TIMEZONE,
     commandsScope: env.COMMANDS_SCOPE,
     dashboardToken: env.DASHBOARD_TOKEN.trim(),
+    adminPanelCode: env.ADMIN_PANEL_CODE,
+    adminCodeIsDefault: env.ADMIN_PANEL_CODE === '1357',
+    adminSessionTtlMs: env.ADMIN_SESSION_TTL_MINUTES * 60_000,
+    adminLockoutMs: env.ADMIN_LOCKOUT_SECONDS * 1_000,
+    adminAllowedIps: env.ADMIN_ALLOWED_IPS.split(/[\s,;]+/).filter((ip) => ip.length > 0),
+    raidSimGuildIds: env.RAID_SIM_GUILD_IDS.split(/[\s,;]+/).filter((id) => /^\d{17,20}$/.test(id)),
   };
 
   return cached;

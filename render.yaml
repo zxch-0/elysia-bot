@@ -31,6 +31,21 @@ services:
         sync: false
       - key: SELF_PING_URL
         sync: false
+      # Code d'accès de l'onglet admin caché (/admin) : à changer impérativement.
+      - key: ADMIN_PANEL_CODE
+        sync: false
+      # Serveur(s) de TEST autorisés pour le simulateur de raid.
+      # À LAISSER VIDE en production : le simulateur est alors désactivé.
+      - key: RAID_SIM_GUILD_IDS
+        sync: false
+      # Liste blanche d'IP pour l'onglet admin (vide = toutes les IP).
+      - key: ADMIN_ALLOWED_IPS
+        sync: false
+      # Durée de session (minutes) et verrouillage anti-brute-force (secondes).
+      - key: ADMIN_SESSION_TTL_MINUTES
+        value: "60"
+      - key: ADMIN_LOCKOUT_SECONDS
+        value: "900"
       # Réglages non sensibles
       - key: HOST
         value: 0.0.0.0

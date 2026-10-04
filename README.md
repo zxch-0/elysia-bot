@@ -25,6 +25,7 @@
 | **Purge intelligente** | Filtres : bots, humains, images, liens, invitations Discord, membre précis |
 | **Verrouillage** | `/lock verrouiller`, `/lock deverrouiller`, `/lock tout` (verrouillage global avec confirmation), `/slowmode` |
 | **Sécurités** | Vérification de la hiérarchie des rôles, des permissions du bot **et** de l'auteur, refus de modérer le propriétaire du serveur |
+| **🛡️ Anti-raid** | Détection automatique des vagues d'arrivées, créations/suppressions massives de salons et de rôles, bannissements en série et spam de messages. Verrouillage automatique avec **restauration exacte** des permissions d'origine, liste de confiance, alertes staff. Pilotage : `/antiraid` — [guide complet](docs/ADMIN-SECURITE.md) |
 
 ### 🎁 Giveaways (réservés aux admins / rôles hôtes)
 - Lancement avec **durée**, **nombre de gagnants**, **salon**, **image**, **rôle de notification**.
@@ -78,6 +79,7 @@
 - `/config salut` : **diagnostic** des permissions, salons et hiérarchie des rôles.
 - Logs séparés : modération, messages (suppression/édition), membres (arrivée/départ).
 - Rôles automatiques à l'arrivée, messages de bienvenue/départ personnalisables (`{mention}`, `{server}`, `{membercount}`…).
+- **🔐 Onglet admin caché** (`/admin`, non listé dans la navigation) : anti-raid, simulateur de raid et journal d'audit — accès par code + session sécurisée. Voir [docs/ADMIN-SECURITE.md](docs/ADMIN-SECURITE.md).
 - **Site web intégré (6 pages)** : tableau de bord, **catalogue des commandes**, **classements des mini-jeux**, **classement d'argent** (onglet 💰 Économie), **communauté** (niveaux, suggestions, sondages, anniversaires) et **données internes** (cases, notes du staff, journaux) — plus `/health` (UptimeRobot), une **API JSON** complète et `/metrics` (Prometheus). Interface 100 % autonome (aucune ressource externe), protégeable par `DASHBOARD_TOKEN`.
 - **Base JSON persistante** (aucun MongoDB/Postgres à installer), écriture atomique, sauvegarde à l'arrêt.
 - Prêt pour Render : `render.yaml`, `Dockerfile`, CI GitHub Actions, **auto-ping** intégré.
@@ -143,6 +145,14 @@ Activez le mode développeur Discord (*Paramètres → Avancés → Mode dévelo
 | `COMMANDS_SCOPE` | — | `auto` | Portée des slash-commands : `auto`, `guild`, `global` ou `both`. `auto` = serveur de dev si `DEV_GUILD_ID` est défini, sinon global — **une seule portée à la fois** pour éviter les commandes en double |
 | `BIRTHDAY_TIMEZONE` | — | `Europe/Paris` | Fuseau utilisé pour déterminer le jour des annonces d'anniversaires |
 | `DASHBOARD_TOKEN` | — | — | Jeton protégeant la page `/donnees` et les routes `/api/cases`, `/api/notes`, `/api/reminders`, `/api/logs` (vide = accès libre) |
+| `ADMIN_PANEL_CODE` | — | `1357` | 🔐 Code d'accès de l'onglet admin caché (`/admin`). **À changer** : un code long est recommandé |
+| `ADMIN_SESSION_TTL_MINUTES` | — | `60` | Durée d'une session admin, prolongée à chaque action |
+| `ADMIN_LOCKOUT_SECONDS` | — | `900` | Verrouillage anti-brute-force après 5 échecs (par IP) |
+| `ADMIN_ALLOWED_IPS` | — | — | Liste blanche d'IP autorisées pour l'onglet admin (vide = toutes). Ex. `82.64.12.34` |
+| `RAID_SIM_GUILD_IDS` | — | — | 🧪 Serveur(s) de **test** autorisés pour le simulateur de raid. **Vide = simulateur désactivé** (recommandé en production) |
+
+> 🔐 **Sécurité** : anti-raid, onglet admin, simulateur et recommandations →
+> **[docs/ADMIN-SECURITE.md](docs/ADMIN-SECURITE.md)**
 
 ---
 
@@ -164,11 +174,11 @@ Activez le mode développeur Discord (*Paramètres → Avancés → Mode dévelo
 
 Liste complète et détaillée : **[docs/COMMANDES.md](docs/COMMANDES.md)**
 
-**53 commandes** au total (catégories affichées par `/help`, consultables avec `/help categorie:…`).
+**54 commandes** au total (catégories affichées par `/help`, consultables avec `/help categorie:…`).
 
 | Catégorie | Commandes |
 |---|---|
-| 🛡️ Modération | `/ban` `/kick` `/mute` `/unmute` `/warn` `/sanctions` `/unban` `/cases` `/purge` `/lock` `/slowmode` `/note` `/bannissements` `/vocal` |
+| 🛡️ Modération | `/ban` `/kick` `/mute` `/unmute` `/warn` `/sanctions` `/unban` `/cases` `/purge` `/lock` `/slowmode` `/note` `/bannissements` `/vocal` `/antiraid` |
 | 🎁 Giveaways | `/giveaway` (`creer`, `terminer`, `relancer`, `liste`, `stats`, `supprimer`) |
 | 🎭 Rôles & embeds | `/rolepanel` `/embed` `/role` |
 | 🎉 Communauté & animation | `/sondage` `/suggestion` `/anniversaire` `/compte-a-rebours` `/niveau` `/tirage` |
@@ -296,7 +306,7 @@ Six pages HTML autonomes (aucune CDN, aucun build front) accessibles dès que le
 | `npm start` | Démarrage en production (utilisé par Render) |
 | `npm run typecheck` | Vérification des types sans compiler |
 | `npm run validate` | Diagnostic complet avant déploiement (token, permissions, dossiers) |
-| `npm run self-test` | Auto-test métier hors ligne (308 contrôles : durées, base JSON, calcul, unités, dés, codecs, services, mini-jeux, aide, pages et API du site) |
+| `npm run self-test` | Auto-test métier hors ligne (366 contrôles : durées, base JSON, calcul, unités, dés, codecs, services, mini-jeux, aide, pages et API du site) |
 | `npm run fuzz:games` | Fuzzing des mini-jeux : des millions de contrôles sur un faux Discord, limites de l'API et invariants (≈ 1 min ; `FUZZ_ROUNDS=25` pour un passage intensif, `FUZZ_SEED` pour rejouer un échec) |
 | `npm run deploy:commands` | Publie/rafraîchit les slash-commands (`-- --clear` pour tout réinitialiser) |
 | `npm run preview` | Mode démonstration : tableau de bord sans connexion Discord (`DRY_RUN=1`) |

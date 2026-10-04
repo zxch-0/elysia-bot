@@ -323,6 +323,54 @@ async function main(): Promise<void> {
   );
   check('commande /argent présente', client.commands.has('argent'));
   check('commande /argent en catégorie économie', client.commands.get('argent')?.category === 'economy');
+  check('commande /antiraid présente', client.commands.has('antiraid'));
+  check('commande /antiraid en catégorie modération', client.commands.get('antiraid')?.category === 'moderation');
+  check(
+    '/antiraid expose statut, verrouillage et liste de confiance',
+    ['statut', 'verrouiller', 'deverrouiller', 'confiance', 'seuils', 'test'].every((name) =>
+      (client.commands.get('antiraid')?.data.toJSON() as { options?: Array<{ name: string }> }).options?.some((option) => option.name === name),
+    ),
+  );
+  const { defaultAntiRaidSettings, antiRaidService } = await import('../src/services/antiRaidService');
+  const raidDefaults = defaultAntiRaidSettings('000000000000000000');
+  check(
+    'anti-raid : réglages par défaut sûrs',
+    raidDefaults.enabled === true &&
+      raidDefaults.lockdown.auto === true &&
+      raidDefaults.accountAge.action === 'none' &&
+      raidDefaults.spam.enabled === false &&
+      raidDefaults.state.lockdownActive === false,
+  );
+  check('anti-raid : mention validée avant envoi (protège les membres de confiance)', typeof antiRaidService.isTrusted === 'function');
+  check(
+    'anti-raid : détection testée sans aucun effet',
+    (() => {
+      const result = antiRaidService.test('000000000000000000', 'arrivees', 1_000);
+      return result.detected === true && typeof result.explain === 'string' && result.action.length > 0;
+    })(),
+  );
+
+  const { neutralizeMentions, sanitizeRequest, RAID_SIM_LIMITS } = await import('../src/services/raidSimService');
+  check(
+    'simulateur : mentions neutralisées',
+    (() => {
+      const sanitized = neutralizeMentions('@everyone <@123456789012345678> <@&123456789012345678> <#123456789012345678>');
+      return !/@everyone|<@/.test(sanitized) && sanitized.includes('everyone');
+    })(),
+  );
+  check(
+    'simulateur : bornes appliquées aux demandes forgées',
+    (() => {
+      const request = sanitizeRequest({ messages: 9_999, channels: 9_999, messageIntervalMs: 1, channelIntervalMs: 1 });
+      return (
+        request.messages === RAID_SIM_LIMITS.maxMessages &&
+        request.channels === RAID_SIM_LIMITS.maxChannels &&
+        request.messageIntervalMs === RAID_SIM_LIMITS.minMessageIntervalMs &&
+        request.channelIntervalMs === RAID_SIM_LIMITS.minChannelIntervalMs
+      );
+    })(),
+  );
+  check('simulateur : désactivé sans liste blanche', (await import('../src/services/raidSimService')).raidSimService.enabled === false);
   check('module de mini-jeux (préfixe g) enregistré', client.modules.has('g'));
   check('cooldown bloqué au second appel immédiat', (() => {
     const fake = { user: { id: '1' }, commandName: 'giveaway' } as any;
@@ -1065,6 +1113,89 @@ async function main(): Promise<void> {
     }
     check(`page ${route} : JavaScript valide`, script.length > 0 && syntaxError === null, syntaxError ?? undefined);
   }
+
+  // ── 🔐 Onglet admin caché (/admin) ────────────────────────────────────────
+  const { loadConfig } = await import('../src/core/config');
+  const adminCode = loadConfig().adminPanelCode;
+
+  const lockPage = await (await fetch(`${base}/admin`)).text();
+  check('page /admin servie sans session = écran de verrouillage', lockPage.includes('Accès restreint') && lockPage.includes('Déverrouiller'));
+  check('page /admin ne divulgue aucun panneau sans session', !lockPage.includes('STOP RAID SIM') && !lockPage.includes('Anti-raid'));
+  check('/admin absent de la navigation publique', !lockPage.includes('href="/admin"'));
+  check('/api/admin/overview refusé sans session', (await fetch(`${base}/api/admin/overview`)).status === 401);
+  check('/api/admin/raid-sim/start refusé sans session', (await fetch(`${base}/api/admin/raid-sim/start`, { method: 'POST' })).status === 401);
+
+  const adminLogin = await fetch(`${base}/api/admin/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-elysia-admin': '1' },
+    body: JSON.stringify({ code: adminCode }),
+  });
+  const cookie = adminLogin.headers.get('set-cookie') ?? '';
+  const adminLoginBody: any = await adminLogin.json();
+  check('connexion admin avec le bon code', adminLogin.status === 200 && adminLoginBody.ok === true, adminLogin.status);
+  check(
+    'cookie de session durci (HttpOnly + SameSite=Strict)',
+    /HttpOnly/i.test(cookie) && /SameSite=Strict/i.test(cookie) && /elysia_admin=[0-9a-f]{64}/.test(cookie),
+  );
+
+  const adminHeaders = { headers: { cookie, 'x-elysia-admin': '1' } };
+  const adminPanelHtml = await (await fetch(`${base}/admin`, { headers: { cookie } })).text();
+  check('page /admin affiche le panneau avec une session', adminPanelHtml.includes('STOP RAID SIM') && adminPanelHtml.includes('Anti-raid'));
+  check(
+    'page /admin : JavaScript valide',
+    (() => {
+      const code = adminPanelHtml.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? '';
+      try {
+        new Script(code, { filename: '/admin' });
+        return code.length > 0;
+      } catch {
+        return false;
+      }
+    })(),
+  );
+
+  const adminOverview: any = await (await fetch(`${base}/api/admin/overview`, adminHeaders)).json();
+  check(
+    '/api/admin/overview expose anti-raid et simulateur',
+    adminOverview.ok === true && typeof adminOverview.antiraid?.settings?.enabled === 'boolean' && typeof adminOverview.raidSim?.enabled === 'boolean',
+  );
+  check(
+    '/api/admin/overview journalise la connexion',
+    Array.isArray(adminOverview.audit) && adminOverview.audit.some((entry: any) => entry.action === 'connexion'),
+  );
+  check(
+    'anti-raid actif par défaut (seuils dans des bornes saines)',
+    adminOverview.antiraid.settings.enabled === true &&
+      adminOverview.antiraid.settings.joins.threshold >= 2 &&
+      adminOverview.antiraid.settings.lockdown.auto === true,
+  );
+  check(
+    'simulateur désactivé sans RAID_SIM_GUILD_IDS',
+    adminOverview.raidSim.enabled === (loadConfig().raidSimGuildIds.length > 0),
+  );
+
+  const csrf = await fetch(`${base}/api/admin/antiraid/test`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ guildId: '0', type: 'arrivees' }),
+  });
+  check('POST admin refusé sans en-tête anti-CSRF', csrf.status === 403, csrf.status);
+
+  const simRefused = await fetch(`${base}/api/admin/raid-sim/start`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json', 'x-elysia-admin': '1' },
+    body: JSON.stringify({ guildId: '000000000000000000', messages: 5, confirm: 'SIMULATION' }),
+  });
+  if (loadConfig().raidSimGuildIds.length === 0) {
+    check('simulateur refusé tant que RAID_SIM_GUILD_IDS est vide', simRefused.status === 403, simRefused.status);
+  } else {
+    check('simulateur : serveur hors liste blanche refusé', simRefused.status === 403, simRefused.status);
+  }
+
+  const adminLogout = await fetch(`${base}/api/admin/logout`, { method: 'POST', headers: adminHeaders.headers });
+  const adminLogoutBody: any = await adminLogout.json();
+  check('déconnexion admin', adminLogout.status === 200 && adminLogoutBody.ok === true);
+  check('/api/admin/overview refusé après déconnexion', (await fetch(`${base}/api/admin/overview`, adminHeaders)).status === 401);
 
   const index = await asJson('/api');
   check('/api indexe toutes les routes', Array.isArray(index.endpoints) && index.endpoints.length >= 10, index.endpoints?.length);

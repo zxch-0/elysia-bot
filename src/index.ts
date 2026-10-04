@@ -8,6 +8,8 @@ import { publishCommands } from './core/handlers/commandPublisher';
 import { registerInteractionModules } from './modules';
 import { registerEvents } from './events';
 import { SchedulerService } from './services/schedulerService';
+import { antiRaidService } from './services/antiRaidService';
+import { raidSimService } from './services/raidSimService';
 import { startWebServer } from './web/server';
 import { startAutoPing } from './web/autoPing';
 import { runDryRunDemo } from './web/dryRun';
@@ -71,6 +73,17 @@ async function main(): Promise<void> {
   client = createClient();
   await loadCommands(client);
   registerInteractionModules(client);
+
+  // 2b. Sécurité : anti-raid (événements Discord) et simulateur de test
+  //     (désactivé tant que RAID_SIM_GUILD_IDS ne liste aucun serveur).
+  antiRaidService.attach(client);
+  raidSimService.attach(client);
+  if (config.adminCodeIsDefault) {
+    log.warn('🔐 Onglet admin : code par défaut « 1357 » toujours actif — définissez ADMIN_PANEL_CODE pour le changer.');
+  }
+  if (!config.dryRun && config.raidSimGuildIds.length === 0) {
+    log.info('🧪 Simulateur de raid désactivé (RAID_SIM_GUILD_IDS vide) — aucune action offensive possible.');
+  }
 
   // 3. Serveur web (health-check UptimeRobot + tableau de bord)
   webServer = await startWebServer({ client, scheduler: undefined });

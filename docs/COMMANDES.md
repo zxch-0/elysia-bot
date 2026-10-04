@@ -103,6 +103,21 @@ Fusionne la liste Discord (`bans.fetch`) et les **cases** locales : raison, mod�
 | `limite` | `salon` `limite` | Fixe la limite de places (0 = illimité) |
 | `personnes` | — | Qui est connecté, où, et avec quels états (muet, sourd, streaming) |
 
+### `/antiraid` — Protection anti-raid `[Perm: Gérer le serveur]`
+| Sous-commande | Options | Description |
+|---|---|---|
+| `statut` | — | État complet : seuils, verrouillage, liste de confiance, raids détectés |
+| `activer` / `desactiver` | — | Interrupteur général de la protection |
+| `seuils` | `arrivees` `fenetre_arrivees` `salons` `sanction_raid` `anti_spam` | Ajuste les détections (bornées côté serveur) |
+| `verrouiller` | `raison` `duree` | Retire l'écriture à `@everyone` dans tous les salons textuels (permissions mémorisées) |
+| `deverrouiller` | — | Restaure exactement les permissions d'avant le verrouillage |
+| `confiance` | `cible` (membre ou rôle) | Ajoute/retire : un membre de confiance n'est jamais sanctionné |
+| `test` | — | Explique ce qui se déclencherait avec les seuils actuels (aucun effet) |
+
+> 🛡️ Détections automatiques : vagues d'arrivées, créations/suppressions massives de salons et de rôles,
+> bannissements en série, spam de messages. Configuration complète, alertes et journal d'audit :
+> **[docs/ADMIN-SECURITE.md](ADMIN-SECURITE.md)**.
+
 ---
 
 ## 🎁 Giveaways
